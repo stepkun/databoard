@@ -1,0 +1,49 @@
+# Copyright © 2025 Stephan Kunz
+[package]
+resolver = "3"
+name = "databoard"
+version = "0.0.0"
+edition = "2024"
+license-file = "LICENSE"
+authors = ["stepkun <stephan.kunz@kabelbw.de>"]
+description = "Datastore/Blackboard immplementation"
+repository = "https://github.com/stepkun/databoard.git"
+homepage = "http://github.com/stepkun/databoard.git"
+documentation = "https://docs.rs/databoard"
+readme = "README.md"
+keywords = ["blackboard", "datastore"]
+categories = ["development-tools"]
+exclude = ["laze*", "benches/**", "embedded/**", "examples/**", "tests/**"]
+
+[lib]
+name = "databoard"
+
+[lints.rust]
+missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(context, values(any()))',
+] }
+unsafe_code = "warn"
+unused_must_use = "warn"
+
+[lints.rustdoc]
+private_intra_doc_links = "allow"
+
+[lints.clippy]
+enum_glob_use = "deny"
+expect_used = "deny"
+nursery = { level = "deny", priority = -1 }
+panic = "deny"
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
+[dependencies]
+
+[build-dependencies]
+
+[dev-dependencies]
+doc-comment = "0.3.3"
+
+[features]
+default = ["std"]
+std = []
