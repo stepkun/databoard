@@ -38,6 +38,13 @@ pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 [dependencies]
+spin = { version = "0.10.0", default-features = false, features = [
+    ##"fair-mutex",
+    ##"spin-mutex",
+    ##"ticket-mutex",
+    #"use_ticket_mutex",
+    "rwlock",
+] }
 
 [build-dependencies]
 
