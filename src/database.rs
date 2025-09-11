@@ -17,34 +17,12 @@ use core::{
 use spin::RwLock;
 
 /// Struct that holds all [`Databoard`] data.
-pub struct DataboardData {
+#[derive(Default)]
+pub struct Database {
 	storage: BTreeMap<ConstString, EntryPtr>,
-	/// Manual remapping rules from this [`Databoard`] to the parent.
-	remappings: Remappings,
-	/// Whether to use automatic remapping to parents content.
-	autoremap: bool,
 }
 
-impl Default for DataboardData {
-	fn default() -> Self {
-		Self {
-			storage: BTreeMap::default(),
-			remappings: Remappings::default(),
-			autoremap: false,
-		}
-	}
-}
-
-impl DataboardData {
-	/// Creates new `DataboardData` with given parameters.
-	pub fn with(remappings: Remappings, autoremap: bool) -> Self {
-		Self {
-			storage: BTreeMap::default(),
-			remappings,
-			autoremap,
-		}
-	}
-
+impl Database {
 	pub fn contains(&self, key: &str) -> bool {
 		self.storage.contains_key(key)
 	}
@@ -66,56 +44,57 @@ impl DataboardData {
 			}
 		} else {
 			return Err(Error::NotFound { key: key.into() });
-		};
+		}
 		if let Some(old) = self.storage.remove(key) {
 			let en = old.0.into_inner().data;
 			if let Ok(value) = en.downcast::<T>() {
 				return Ok(*value);
 			}
-		};
+		}
 
 		// We should never reach this!
 		Err(Error::Unexpected(file!().into(), line!()))
 	}
 
 	pub fn update<T: Clone + Send + Sync + 'static>(&self, key: &str, value: T) -> Result<T> {
-		if let Some(mut entry) = self.storage.get(key) {
-			let en = &mut *entry.0.write();
-			let t = en.data.downcast_ref::<T>();
-			t.cloned().map_or_else(
-				|| return Err(Error::WrongType { key: key.into() }),
-				|v| {
-					en.data = Box::new(value);
-					if en.sequence_id <= usize::MAX {
-						en.sequence_id += 1;
-					} else {
-						en.sequence_id = usize::MIN;
-					}
-					return Ok(v);
-				},
-			)
-		} else {
-			Err(Error::NotFound { key: key.into() })
-		}
+		self.storage.get(key).map_or_else(
+			|| Err(Error::NotFound { key: key.into() }),
+			|mut entry| {
+				let en = &mut *entry.0.write();
+				let t = en.data.downcast_ref::<T>();
+				t.cloned().map_or_else(
+					|| Err(Error::WrongType { key: key.into() }),
+					|v| {
+						en.data = Box::new(value);
+						if en.sequence_id < usize::MAX {
+							en.sequence_id += 1;
+						} else {
+							en.sequence_id = usize::MIN + 1;
+						}
+						Ok(v)
+					},
+				)
+			},
+		)
 	}
 
 	pub fn read<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
-		if let Some(entry) = self.storage.get(key) {
-			let en = &*entry.0.read().data;
-			let t = en.downcast_ref::<T>();
-			t.cloned()
-				.map_or_else(|| return Err(Error::WrongType { key: key.into() }), |v| return Ok(v))
-		} else {
-			Err(Error::NotFound { key: key.into() })
-		}
+		self.storage.get(key).map_or_else(
+			|| Err(Error::NotFound { key: key.into() }),
+			|entry| {
+				let en = &*entry.0.read().data;
+				let t = en.downcast_ref::<T>();
+				t.cloned()
+					.map_or_else(|| Err(Error::WrongType { key: key.into() }), |v| Ok(v))
+			},
+		)
 	}
 
 	pub fn sequence_id(&self, key: &str) -> Result<usize> {
-		if let Some(entry) = self.storage.get(key) {
-			Ok(entry.read().sequence_id)
-		} else {
-			Err(Error::NotFound { key: key.into() })
-		}
+		self.storage.get(key).map_or_else(
+			|| Err(Error::NotFound { key: key.into() }),
+			|entry| Ok(entry.read().sequence_id),
+		)
 	}
 }
 
@@ -128,6 +107,6 @@ mod tests {
 
 	#[test]
 	const fn normal_types() {
-		is_normal::<DataboardData>();
+		is_normal::<Database>();
 	}
 }

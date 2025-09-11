@@ -8,8 +8,8 @@ doc_comment::doctest!("../README.md");
 #[doc(hidden)]
 extern crate alloc;
 
+mod database;
 mod databoard;
-mod databoard_data;
 mod entry;
 mod error;
 mod remappings;
