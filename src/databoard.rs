@@ -20,9 +20,9 @@ use spin::RwLock;
 /// Convenience type for a pointer to a [`Databoard`].
 pub type DataboardPtr = Arc<Databoard>;
 
-/// A Databoard implements both: a [`Blackboard`] and a [`Datastore`].
+/// A Databoard implements both.
 pub struct Databoard {
-	/// Database of this `Databoard`.
+	/// [`Database`] of this `Databoard`.
 	database: Arc<RwLock<Database>>,
 	/// An optional reference to a parent `Databoard`.
 	parent: Option<Arc<Databoard>>,
@@ -81,11 +81,12 @@ impl Databoard {
 			return true;
 		}
 
-		// autoremapping?
-		if self.autoremap
-			&& let Some(parent) = &self.parent
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
 		{
-			return parent.contains(key);
+			return parent.contains(&parent_key);
 		}
 
 		false
@@ -108,25 +109,33 @@ impl Databoard {
 
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if (has_remapping || autoremap)
-			&& let Some(parent) = &self.parent
-			&& parent.contains(&parent_key)
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
 		{
-			return parent.delete(key);
+			return parent.delete(&parent_key);
 		}
 
 		Err(Error::NotFound { key: key.into() })
 	}
 
-	/// Returns a copy of the raw [`Entry`] stored under `key`.
-	#[must_use]
-	pub fn entry(&self, key: &str) -> Option<EntryData> {
+	/// Returns a copy of the raw [`EntryData`] stored under `key`.
+	/// # Errors
+	/// - if `key` is not contained
+	fn entry(&self, key: &str) -> Result<EntryData> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().entry(key_stripped);
 		}
 
-		todo!()
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+		{
+			return parent.entry(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a copy of the value of type `T` stored under `key`.
@@ -144,19 +153,22 @@ impl Databoard {
 			return Ok(value);
 		}
 
-		// autoremapping?
-		if self.autoremap
-			&& let Some(parent) = &self.parent
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
 		{
-			return parent.get(key);
+			return parent.get(&parent_key);
 		}
 
 		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a read/write guard to the `T` for the `key`.
-	#[must_use]
-	pub fn guard<T>(&self, key: &str) -> EntryGuard<T> {
+	/// # Errors
+	/// - if `key` is not contained
+	/// - if the entry has not the expected type `T`
+	fn guard<T>(&self, key: &str) -> Result<EntryGuard<T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().guard(key_stripped);
@@ -188,9 +200,8 @@ impl Databoard {
 
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if (has_remapping || autoremap)
-			&& let Some(parent) = &self.parent
-			&& parent.contains(&parent_key)
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
 		{
 			return parent.set(&parent_key, value);
 		}
@@ -215,11 +226,12 @@ impl Databoard {
 			return Ok(value);
 		}
 
-		// autoremapping?
-		if self.autoremap
-			&& let Some(parent) = &self.parent
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
 		{
-			return parent.sequence_id(key);
+			return parent.sequence_id(&parent_key);
 		}
 
 		Err(Error::NotFound { key: key.into() })

@@ -6,7 +6,7 @@ use crate::ConstString;
 /// Shortcut for [`Databoard`](crate::Databoard)'s Result<T, E> type
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Things that may go wrong using the [`Databoard`].
+/// Things that may go wrong using the [`Databoard`](crate::Databoard).
 #[non_exhaustive]
 pub enum Error {
 	/// Key is already remapped.

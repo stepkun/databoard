@@ -135,3 +135,131 @@ fn root_access_auto_remapping() {
 	assert!(!level1.contains("test"));
 	assert!(!level2.contains("test"));
 }
+
+#[test]
+fn auto_remapping() {
+	let root = Databoard::new();
+	let level1 = Databoard::with_parent(root.clone());
+	let level2 = Databoard::with_parent(level1.clone());
+
+	// set 'test' in root
+	assert_eq!(root.set("test", 40).unwrap(), None);
+	// set 'test1' in level1
+	assert_eq!(level1.set("test1", 41).unwrap(), None);
+	// set 'test2' in level2
+	assert_eq!(level2.set("test2", 42).unwrap(), None);
+	assert_eq!(root.get::<i32>("test").unwrap(), 40);
+	assert_eq!(level1.get::<i32>("test").unwrap(), 40);
+	assert_eq!(level2.get::<i32>("test").unwrap(), 40);
+	assert!(root.get::<i32>("test1").is_err());
+	assert_eq!(level1.get::<i32>("test1").unwrap(), 41);
+	assert_eq!(level2.get::<i32>("test1").unwrap(), 41);
+	assert!(root.get::<i32>("test2").is_err());
+	assert!(level1.get::<i32>("test2").is_err());
+	assert_eq!(level2.get::<i32>("test2").unwrap(), 42);
+
+	assert_eq!(root.delete::<i32>("test").unwrap(), 40);
+	assert!(!root.contains("test"));
+	assert_eq!(level1.delete::<i32>("test1").unwrap(), 41);
+	assert!(!level1.contains("test1"));
+	assert_eq!(level2.delete::<i32>("test2").unwrap(), 42);
+	assert!(!level2.contains("test"));
+}
+
+#[test]
+fn manual_remapping() {
+	let root = Databoard::new();
+	let mut remappings = Remappings::default();
+	remappings.add("test", "test");
+	remappings.add("test1", "test");
+	let level1 = Databoard::with(Some(root.clone()), Some(remappings), false);
+	let mut remappings = Remappings::default();
+	remappings.add("test", "test");
+	remappings.add("test1", "test1");
+	remappings.add("test2", "test");
+	remappings.add("testX", "test1");
+	let level2 = Databoard::with(Some(level1.clone()), Some(remappings), false);
+
+	// set 'test' in level2
+	assert_eq!(level2.set("test", 40).unwrap(), None);
+	assert!(level2.contains("test"));
+	assert!(level2.contains("test1"));
+	assert!(level2.contains("test2"));
+	assert!(level2.contains("testX"));
+	assert!(level1.contains("test"));
+	assert!(level1.contains("test1"));
+	assert!(!level1.contains("test2"));
+	assert!(!level1.contains("testX"));
+	assert!(root.contains("test"));
+	assert!(!root.contains("test1"));
+	assert!(!root.contains("test2"));
+	assert!(!root.contains("testX"));
+	// set 'test1' in level2
+	assert_eq!(level2.set("test1", 41).unwrap(), Some(40));
+	assert!(level2.contains("test1"));
+	assert!(level1.contains("test1"));
+	assert!(!root.contains("test1"));
+	// set 'test2' in level2
+	assert_eq!(level2.set("test2", 42).unwrap(), Some(41));
+	assert!(level2.contains("test2"));
+	// set 'testX' in level2
+	assert_eq!(level2.set("testX", 44).unwrap(), Some(42));
+	assert!(level2.contains("testX"));
+
+	assert_eq!(root.get::<i32>("test").unwrap(), 44);
+	assert_eq!(level1.get::<i32>("test").unwrap(), 44);
+	assert_eq!(level1.get::<i32>("test1").unwrap(), 44);
+	assert_eq!(level2.get::<i32>("test").unwrap(), 44);
+	assert_eq!(level2.get::<i32>("test1").unwrap(), 44);
+	assert_eq!(level2.get::<i32>("test2").unwrap(), 44);
+	assert_eq!(level2.get::<i32>("testX").unwrap(), 44);
+
+	assert_eq!(level2.delete::<i32>("test2").unwrap(), 44);
+	assert!(!root.contains("test"));
+	assert!(!level1.contains("test"));
+	assert!(!level1.contains("test1"));
+	assert!(!level2.contains("test"));
+	assert!(!level2.contains("test1"));
+	assert!(!level2.contains("test2"));
+}
+
+#[test]
+fn mixed_remapping() {
+	let root = Databoard::new();
+	let mut remappings = Remappings::default();
+	remappings.add("manual1", "manual");
+	let level1 = Databoard::with(Some(root.clone()), Some(remappings), true);
+	let mut remappings = Remappings::default();
+	remappings.add("manual2", "manual1");
+	let level2 = Databoard::with(Some(level1.clone()), Some(remappings), true);
+
+	// set 'test' in root
+	assert_eq!(root.set("test", 42).unwrap(), None);
+	assert_eq!(root.get::<i32>("test").unwrap(), 42);
+	assert_eq!(level1.get::<i32>("test").unwrap(), 42);
+	assert_eq!(level2.get::<i32>("test").unwrap(), 42);
+
+	assert!(root.contains("test"));
+	assert!(level1.contains("test"));
+	assert!(level2.contains("test"));
+
+	assert_eq!(level2.delete::<i32>("test").unwrap(), 42);
+	assert!(!root.contains("test"));
+	assert!(!level1.contains("test"));
+	assert!(!level2.contains("test"));
+
+	// set 'manual2' in level2
+	assert_eq!(level2.set("manual2", 24).unwrap(), None);
+	assert_eq!(root.get::<i32>("manual").unwrap(), 24);
+	assert_eq!(level1.get::<i32>("manual1").unwrap(), 24);
+	assert_eq!(level2.get::<i32>("manual2").unwrap(), 24);
+
+	assert!(root.contains("manual"));
+	assert!(level1.contains("manual1"));
+	assert!(level2.contains("manual2"));
+
+	assert_eq!(level2.delete::<i32>("manual2").unwrap(), 24);
+	assert!(!root.contains("manual"));
+	assert!(!level1.contains("manual1"));
+	assert!(!level2.contains("manual2"));
+}
