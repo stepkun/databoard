@@ -20,7 +20,7 @@ use spin::RwLock;
 /// Convenience type for a pointer to a [`Databoard`].
 pub type DataboardPtr = Arc<Databoard>;
 
-/// A Databoard implements both.
+/// The Databoard implementation.
 pub struct Databoard {
 	/// [`Database`] of this `Databoard`.
 	database: Arc<RwLock<Database>>,
@@ -70,26 +70,51 @@ impl Databoard {
 
 	/// Returns `true` if a certain `key` is available, otherwise `false`.
 	#[must_use]
-	pub fn contains(&self, key: &str) -> bool {
+	pub fn contains_key(&self, key: &str) -> bool {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().contains(key_stripped);
+			return self.root().contains_key(key_stripped);
 		}
 
 		// look in database
-		if self.database.read().contains(key) {
+		if self.database.read().contains_key(key) {
 			return true;
 		}
 
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
-			return parent.contains(&parent_key);
+			return parent.contains_key(&parent_key);
 		}
 
 		false
+	}
+
+	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
+	/// # Errors
+	/// - if the entry has not the expected type `T`
+	pub fn contains<T: 'static>(&self, key: &str) -> Result<bool> {
+		// if it is a key starting with an '@' redirect to root board
+		if let Some(key_stripped) = key.strip_prefix('@') {
+			return self.root().contains::<T>(key_stripped);
+		}
+
+		// look in database
+		if self.database.read().contains::<T>(key)? {
+			return Ok(true);
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains::<T>(&parent_key)?))
+		{
+			return Ok(true);
+		}
+
+		Ok(false)
 	}
 
 	/// Returns a value of type `T` stored under `key` and deletes it from storage.
@@ -103,14 +128,14 @@ impl Databoard {
 		}
 
 		// look in database
-		if self.database.read().contains(key) {
+		if self.database.read().contains_key(key) {
 			return self.database.write().delete(key);
 		}
 
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
 			return parent.delete(&parent_key);
 		}
@@ -130,7 +155,7 @@ impl Databoard {
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
 			return parent.entry(&parent_key);
 		}
@@ -156,7 +181,7 @@ impl Databoard {
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
 			return parent.get(&parent_key);
 		}
@@ -164,11 +189,11 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
-	/// Returns a read/write guard to the `T` for the `key`.
+	/// Returns a read/write guard to the `&T` for the `key`.
 	/// # Errors
 	/// - if `key` is not contained
 	/// - if the entry has not the expected type `T`
-	fn guard<T>(&self, key: &str) -> Result<EntryGuard<T>> {
+	fn guard<T>(&self, key: &str) -> Result<EntryGuard<&T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().guard(key_stripped);
@@ -193,7 +218,7 @@ impl Databoard {
 		}
 
 		// first look in own database
-		if self.database.read().contains(key) {
+		if self.database.read().contains_key(key) {
 			let old = self.database.read().update(key, value)?;
 			return Ok(Some(old));
 		}
@@ -201,7 +226,7 @@ impl Databoard {
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
 			return parent.set(&parent_key, value);
 		}
@@ -229,7 +254,7 @@ impl Databoard {
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains(&parent_key)))
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
 		{
 			return parent.sequence_id(&parent_key);
 		}

@@ -9,6 +9,11 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Things that may go wrong using the [`Databoard`](crate::Databoard).
 #[non_exhaustive]
 pub enum Error {
+	/// Entry with `key` already exists.
+	AlreadyExists {
+		/// Key of the entry to create.
+		key: ConstString,
+	},
 	/// Key is already remapped.
 	AlreadyRemapped {
 		/// Key to be remapped.
@@ -47,6 +52,7 @@ impl core::error::Error for Error {
 impl core::fmt::Debug for Error {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			Self::AlreadyExists { key } => write!(f, "AlreadyExists(key: {key}"),
 			Self::AlreadyRemapped { key, remapped } => {
 				write!(f, "AlreadyRemapped(key: {key}, remapped: {remapped}")
 			}
@@ -60,6 +66,7 @@ impl core::fmt::Debug for Error {
 impl core::fmt::Display for Error {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			Self::AlreadyExists { key } => write!(f, "cannot create data with key {key} as they already exist"),
 			Self::AlreadyRemapped { key, remapped } => {
 				write!(f, "key {key} is already remapped as {remapped}")
 			}

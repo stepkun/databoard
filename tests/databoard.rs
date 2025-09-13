@@ -11,19 +11,25 @@ use databoard::{Databoard, Remappings};
 #[test]
 fn standalone() {
 	let databoard = Databoard::new();
-	assert!(!databoard.contains("test"));
+	assert!(!databoard.contains_key("test"));
 	assert!(databoard.get::<i32>("test").is_err());
 	assert!(databoard.get::<String>("test").is_err());
 
 	let old = databoard.set::<i32>("test", 42).unwrap();
 	assert_eq!(old, None);
 
-	assert!(databoard.contains("test"));
+	assert!(databoard.contains_key("test"));
+	assert!(databoard.contains::<i32>("test").unwrap());
+	assert!(databoard.contains::<String>("test").is_err());
 	assert_eq!(databoard.sequence_id("test").unwrap(), 1);
 	assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
-
 	assert!(databoard.get::<String>("test").is_err());
-	assert!(databoard.contains("test"));
+
+	assert!(
+		databoard
+			.set::<String>("test", "fail".into())
+			.is_err()
+	);
 
 	assert_eq!(databoard.set::<i32>("test", 24).unwrap(), Some(42));
 	assert_eq!(databoard.sequence_id("test").unwrap(), 2);
@@ -41,19 +47,35 @@ fn root_access_no_remapping() {
 
 	// set 'test' from level2 in root
 	assert_eq!(level2.set("@test", 42).unwrap(), None);
-	assert!(root.contains("test"));
-	assert!(!level1.contains("test"));
-	assert!(!level2.contains("test"));
+	// access from root
+	assert!(root.contains_key("test"));
+	assert!(root.contains_key("@test"));
+	assert!(root.contains::<String>("test").is_err());
+	assert!(root.contains::<String>("@test").is_err());
+	assert_eq!(root.get::<i32>("test").unwrap(), 42);
 	assert_eq!(root.get::<i32>("@test").unwrap(), 42);
+	assert!(root.get::<String>("test").is_err());
+	assert!(root.get::<String>("@test").is_err());
+	assert_eq!(root.sequence_id("test").unwrap(), 1);
 	assert_eq!(root.sequence_id("@test").unwrap(), 1);
+	// access from level1
+	assert!(!level1.contains_key("test"));
+	assert!(level1.contains_key("@test"));
 	assert_eq!(level1.get::<i32>("@test").unwrap(), 42);
+	assert!(level1.get::<String>("@test").is_err());
 	assert_eq!(level1.sequence_id("@test").unwrap(), 1);
+	// access from level2
+	assert!(!level2.contains_key("test"));
 	assert_eq!(level2.get::<i32>("@test").unwrap(), 42);
+	assert!(level2.get::<String>("@test").is_err());
 	assert_eq!(level2.sequence_id("@test").unwrap(), 1);
 
 	// set 'test' in level2
 	assert_eq!(level2.set("test", 44).unwrap(), None);
-	assert!(!level1.contains("test"));
+	assert!(!level1.contains_key("test"));
+	assert!(level2.contains_key("test"));
+	assert!(level2.contains::<i32>("test").unwrap());
+	assert!(level2.contains::<String>("test").is_err());
 	assert_eq!(level2.get::<i32>("test").unwrap(), 44);
 	assert_eq!(level2.sequence_id("test").unwrap(), 1);
 	assert_eq!(level2.get::<i32>("@test").unwrap(), 42);
@@ -61,7 +83,7 @@ fn root_access_no_remapping() {
 
 	// update 'test' from level2 in root
 	assert_eq!(level2.set("@test", 24).unwrap(), Some(42));
-	assert!(!level1.contains("test"));
+	assert!(!level1.contains_key("test"));
 	assert_eq!(level2.get::<i32>("@test").unwrap(), 24);
 	assert_eq!(level2.sequence_id("@test").unwrap(), 2);
 	assert_eq!(level2.get::<i32>("test").unwrap(), 44);
@@ -69,7 +91,7 @@ fn root_access_no_remapping() {
 
 	// update 'test' in level2
 	assert_eq!(level2.set("test", 22).unwrap(), Some(44));
-	assert!(!level1.contains("test"));
+	assert!(!level1.contains_key("test"));
 	assert_eq!(level2.get::<i32>("@test").unwrap(), 24);
 	assert_eq!(level2.sequence_id("@test").unwrap(), 2);
 	assert_eq!(level2.get::<i32>("test").unwrap(), 22);
@@ -78,9 +100,9 @@ fn root_access_no_remapping() {
 	// delete 'test'
 	assert_eq!(level2.delete::<i32>("test").unwrap(), 22);
 	assert_eq!(level2.delete::<i32>("@test").unwrap(), 24);
-	assert!(!root.contains("test"));
-	assert!(!level1.contains("test"));
-	assert!(!level2.contains("test"));
+	assert!(!root.contains_key("test"));
+	assert!(!level1.contains_key("test"));
+	assert!(!level2.contains_key("test"));
 }
 
 #[test]
@@ -91,20 +113,35 @@ fn root_access_auto_remapping() {
 
 	// set 'test' from level2 in root
 	assert_eq!(level2.set("@test", 42).unwrap(), None);
-	assert!(root.contains("test"));
-	assert!(level1.contains("test"));
-	assert!(level2.contains("test"));
+	// access from root
+	assert!(root.contains_key("test"));
+	assert!(root.contains::<i32>("test").unwrap());
+	assert!(root.contains::<String>("test").is_err());
 	assert_eq!(root.get::<i32>("@test").unwrap(), 42);
-	assert_eq!(root.sequence_id("@test").unwrap(), 1);
-	assert_eq!(level1.get::<i32>("@test").unwrap(), 42);
-	assert_eq!(level1.sequence_id("@test").unwrap(), 1);
-	assert_eq!(level2.get::<i32>("@test").unwrap(), 42);
-	assert_eq!(level2.sequence_id("@test").unwrap(), 1);
 	assert_eq!(root.get::<i32>("test").unwrap(), 42);
+	assert!(root.get::<String>("@test").is_err());
+	assert!(root.get::<String>("test").is_err());
+	assert_eq!(root.sequence_id("@test").unwrap(), 1);
 	assert_eq!(root.sequence_id("test").unwrap(), 1);
+	// access from level1
+	assert!(level1.contains_key("test"));
+	assert!(level1.contains::<i32>("test").unwrap());
+	assert!(level1.contains::<String>("test").is_err());
+	assert_eq!(level1.get::<i32>("@test").unwrap(), 42);
 	assert_eq!(level1.get::<i32>("test").unwrap(), 42);
+	assert!(level1.get::<String>("@test").is_err());
+	assert!(level1.get::<String>("test").is_err());
+	assert_eq!(level1.sequence_id("@test").unwrap(), 1);
 	assert_eq!(level1.sequence_id("test").unwrap(), 1);
+	// access from level2
+	assert!(level2.contains_key("test"));
+	assert!(level2.contains::<i32>("test").unwrap());
+	assert!(level2.contains::<String>("test").is_err());
+	assert_eq!(level2.get::<i32>("@test").unwrap(), 42);
 	assert_eq!(level2.get::<i32>("test").unwrap(), 42);
+	assert!(level2.get::<String>("@test").is_err());
+	assert!(level2.get::<String>("test").is_err());
+	assert_eq!(level2.sequence_id("@test").unwrap(), 1);
 	assert_eq!(level2.sequence_id("test").unwrap(), 1);
 
 	// set 'test' in level2 (should alter '@test')
@@ -131,9 +168,9 @@ fn root_access_auto_remapping() {
 
 	// delete 'test' in level2
 	assert_eq!(level2.delete::<i32>("test").unwrap(), 22);
-	assert!(!root.contains("test"));
-	assert!(!level1.contains("test"));
-	assert!(!level2.contains("test"));
+	assert!(!root.contains_key("test"));
+	assert!(!level1.contains_key("test"));
+	assert!(!level2.contains_key("test"));
 }
 
 #[test]
@@ -158,12 +195,23 @@ fn auto_remapping() {
 	assert!(level1.get::<i32>("test2").is_err());
 	assert_eq!(level2.get::<i32>("test2").unwrap(), 42);
 
-	assert_eq!(root.delete::<i32>("test").unwrap(), 40);
-	assert!(!root.contains("test"));
+	// set 'test' in level1
+	assert_eq!(level1.set("test", 41).unwrap(), Some(40));
+	// set 'test' in level2
+	assert_eq!(level1.set("test", 42).unwrap(), Some(41));
+
+	assert_eq!(root.sequence_id("test").unwrap(), 3);
+	assert_eq!(level1.sequence_id("test").unwrap(), 3);
+	assert_eq!(level2.sequence_id("test").unwrap(), 3);
+	assert_eq!(level1.sequence_id("test1").unwrap(), 1);
+	assert_eq!(level2.sequence_id("test2").unwrap(), 1);
+
+	assert_eq!(root.delete::<i32>("test").unwrap(), 42);
+	assert!(!root.contains_key("test"));
 	assert_eq!(level1.delete::<i32>("test1").unwrap(), 41);
-	assert!(!level1.contains("test1"));
+	assert!(!level1.contains_key("test1"));
 	assert_eq!(level2.delete::<i32>("test2").unwrap(), 42);
-	assert!(!level2.contains("test"));
+	assert!(!level2.contains_key("test"));
 }
 
 #[test]
@@ -182,29 +230,29 @@ fn manual_remapping() {
 
 	// set 'test' in level2
 	assert_eq!(level2.set("test", 40).unwrap(), None);
-	assert!(level2.contains("test"));
-	assert!(level2.contains("test1"));
-	assert!(level2.contains("test2"));
-	assert!(level2.contains("testX"));
-	assert!(level1.contains("test"));
-	assert!(level1.contains("test1"));
-	assert!(!level1.contains("test2"));
-	assert!(!level1.contains("testX"));
-	assert!(root.contains("test"));
-	assert!(!root.contains("test1"));
-	assert!(!root.contains("test2"));
-	assert!(!root.contains("testX"));
+	assert!(level2.contains_key("test"));
+	assert!(level2.contains_key("test1"));
+	assert!(level2.contains_key("test2"));
+	assert!(level2.contains_key("testX"));
+	assert!(level1.contains_key("test"));
+	assert!(level1.contains_key("test1"));
+	assert!(!level1.contains_key("test2"));
+	assert!(!level1.contains_key("testX"));
+	assert!(root.contains_key("test"));
+	assert!(!root.contains_key("test1"));
+	assert!(!root.contains_key("test2"));
+	assert!(!root.contains_key("testX"));
 	// set 'test1' in level2
 	assert_eq!(level2.set("test1", 41).unwrap(), Some(40));
-	assert!(level2.contains("test1"));
-	assert!(level1.contains("test1"));
-	assert!(!root.contains("test1"));
+	assert!(level2.contains_key("test1"));
+	assert!(level1.contains_key("test1"));
+	assert!(!root.contains_key("test1"));
 	// set 'test2' in level2
 	assert_eq!(level2.set("test2", 42).unwrap(), Some(41));
-	assert!(level2.contains("test2"));
+	assert!(level2.contains_key("test2"));
 	// set 'testX' in level2
 	assert_eq!(level2.set("testX", 44).unwrap(), Some(42));
-	assert!(level2.contains("testX"));
+	assert!(level2.contains_key("testX"));
 
 	assert_eq!(root.get::<i32>("test").unwrap(), 44);
 	assert_eq!(level1.get::<i32>("test").unwrap(), 44);
@@ -214,13 +262,17 @@ fn manual_remapping() {
 	assert_eq!(level2.get::<i32>("test2").unwrap(), 44);
 	assert_eq!(level2.get::<i32>("testX").unwrap(), 44);
 
+	assert_eq!(root.sequence_id("test").unwrap(), 4);
+	assert_eq!(level1.sequence_id("test").unwrap(), 4);
+	assert_eq!(level2.sequence_id("test").unwrap(), 4);
+
 	assert_eq!(level2.delete::<i32>("test2").unwrap(), 44);
-	assert!(!root.contains("test"));
-	assert!(!level1.contains("test"));
-	assert!(!level1.contains("test1"));
-	assert!(!level2.contains("test"));
-	assert!(!level2.contains("test1"));
-	assert!(!level2.contains("test2"));
+	assert!(!root.contains_key("test"));
+	assert!(!level1.contains_key("test"));
+	assert!(!level1.contains_key("test1"));
+	assert!(!level2.contains_key("test"));
+	assert!(!level2.contains_key("test1"));
+	assert!(!level2.contains_key("test2"));
 }
 
 #[test]
@@ -239,14 +291,15 @@ fn mixed_remapping() {
 	assert_eq!(level1.get::<i32>("test").unwrap(), 42);
 	assert_eq!(level2.get::<i32>("test").unwrap(), 42);
 
-	assert!(root.contains("test"));
-	assert!(level1.contains("test"));
-	assert!(level2.contains("test"));
+	assert!(root.contains_key("test"));
+	assert!(level1.contains_key("test"));
+	assert!(level2.contains_key("test"));
 
+	assert_eq!(level2.sequence_id("test").unwrap(), 1);
 	assert_eq!(level2.delete::<i32>("test").unwrap(), 42);
-	assert!(!root.contains("test"));
-	assert!(!level1.contains("test"));
-	assert!(!level2.contains("test"));
+	assert!(!root.contains_key("test"));
+	assert!(!level1.contains_key("test"));
+	assert!(!level2.contains_key("test"));
 
 	// set 'manual2' in level2
 	assert_eq!(level2.set("manual2", 24).unwrap(), None);
@@ -254,12 +307,13 @@ fn mixed_remapping() {
 	assert_eq!(level1.get::<i32>("manual1").unwrap(), 24);
 	assert_eq!(level2.get::<i32>("manual2").unwrap(), 24);
 
-	assert!(root.contains("manual"));
-	assert!(level1.contains("manual1"));
-	assert!(level2.contains("manual2"));
+	assert!(root.contains_key("manual"));
+	assert!(level1.contains_key("manual1"));
+	assert!(level2.contains_key("manual2"));
 
+	assert_eq!(level2.sequence_id("manual").unwrap(), 1);
 	assert_eq!(level2.delete::<i32>("manual2").unwrap(), 24);
-	assert!(!root.contains("manual"));
-	assert!(!level1.contains("manual1"));
-	assert!(!level2.contains("manual2"));
+	assert!(!root.contains_key("manual"));
+	assert!(!level1.contains_key("manual1"));
+	assert!(!level2.contains_key("manual2"));
 }

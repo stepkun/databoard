@@ -16,25 +16,52 @@ use core::{
 };
 use spin::RwLock;
 
-/// Struct that holds all [`Databoard`] data.
+/// Struct that holds all [`Databoard`](crate::databoard::Databoard) data.
 #[derive(Default)]
 pub struct Database {
 	storage: BTreeMap<ConstString, EntryPtr>,
 }
 
 impl Database {
-	pub fn contains(&self, key: &str) -> bool {
+	/// Returns `true` if a certain `key` is available, otherwise `false`.
+	pub fn contains_key(&self, key: &str) -> bool {
 		self.storage.contains_key(key)
 	}
 
+	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
+	/// # Errors
+	/// - if the entry has not the expected type `T`
+	pub fn contains<T: 'static>(&self, key: &str) -> Result<bool> {
+		if let Some(entry) = self.storage.get(key) {
+			let en = &*entry.0.read().data;
+			if en.downcast_ref::<T>().is_none() {
+				return Err(Error::WrongType { key: key.into() });
+			}
+			return Ok(true);
+		}
+		Ok(false)
+	}
+
+	/// Creates a value of type `T` under `key`.
+	/// # Errors
+	/// - if `key` already exists
 	pub fn create<T: Send + Sync + 'static>(&mut self, key: impl Into<ConstString>, value: T) -> Result<()> {
+		let key = key.into();
+		if self.storage.contains_key(&key) {
+			return Err(Error::AlreadyExists { key });
+		}
+
 		let entry = EntryPtr::new(value);
-		if self.storage.insert(key.into(), entry).is_some() {
+		if self.storage.insert(key, entry).is_some() {
 			return Err(Error::Unexpected(file!().into(), line!()));
 		}
 		Ok(())
 	}
 
+	/// Returns a value of type `T` stored under `key` and deletes it from storage.
+	/// # Errors
+	/// - if `key` is not contained
+	/// - if the entry has not the expected type `T`
 	pub fn delete<T: Send + Sync + 'static>(&mut self, key: &str) -> Result<T> {
 		// check type
 		if let Some(entry) = self.storage.get(key) {
