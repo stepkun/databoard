@@ -17,15 +17,16 @@ use core::{
 };
 use spin::RwLock;
 
-/// Convenience type for a pointer to a [`Databoard`].
+/// Convenience type for a thread safe pointer to a [`Databoard`].
 pub type DataboardPtr = Arc<Databoard>;
 
 /// The Databoard implementation.
 pub struct Databoard {
 	/// [`Database`] of this `Databoard`.
-	database: Arc<RwLock<Database>>,
+	/// It is behind an `RwLock` to protect against data races.
+	database: RwLock<Database>,
 	/// An optional reference to a parent `Databoard`.
-	parent: Option<Arc<Databoard>>,
+	parent: Option<DataboardPtr>,
 	/// Manual remapping rules from this `Databoard` to the parent.
 	remappings: Remappings,
 	/// Whether to use automatic remapping to parents content.
@@ -37,7 +38,7 @@ impl Databoard {
 	#[must_use]
 	pub fn new() -> DataboardPtr {
 		Arc::new(Self {
-			database: Arc::new(RwLock::new(Database::default())),
+			database: RwLock::new(Database::default()),
 			parent: None,
 			remappings: Remappings::default(),
 			autoremap: false,
@@ -45,9 +46,15 @@ impl Databoard {
 	}
 
 	/// Creates a [`DataboardPtr`] to a new [`Databoard`] with given parameters.
+	/// # Panics
+	/// - if called with remappings but without a parent
 	pub fn with(parent: Option<DataboardPtr>, remappings: Option<Remappings>, autoremap: bool) -> DataboardPtr {
+		assert!(
+			!(remappings.is_some() && parent.is_none()),
+			"invalid usage of Databoard::with(...) giving some remappings but no parent"
+		);
 		let remappings = remappings.map_or_else(Remappings::default, |remappings| remappings);
-		let database = Arc::new(RwLock::new(Database::default()));
+		let database = RwLock::new(Database::default());
 		Arc::new(Self {
 			database,
 			parent,
@@ -56,10 +63,11 @@ impl Databoard {
 		})
 	}
 
-	/// Creates a [`DataboardPtr`] to a new [`Databoard`] with a parent.
+	/// Creates a [`DataboardPtr`] to a new [`Databoard`] using the given parent.
+	/// The parents entries are automatically remapped into the new databoard.
 	#[must_use]
 	pub fn with_parent(parent: DataboardPtr) -> DataboardPtr {
-		let database = Arc::new(RwLock::new(Database::default()));
+		let database = RwLock::new(Database::default());
 		Arc::new(Self {
 			database,
 			parent: Some(parent),
@@ -121,7 +129,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn delete<T: Send + Sync + 'static>(&self, key: &str) -> Result<T> {
+	pub fn delete<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().delete(key_stripped);
@@ -152,6 +160,11 @@ impl Databoard {
 			return self.root().entry(key_stripped);
 		}
 
+		// look in database
+		if self.database.read().contains_key(key) {
+			todo!();
+		}
+
 		// Try to find in parent hierarchy.
 		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
 		if let Some(parent) = &self.parent
@@ -174,8 +187,8 @@ impl Databoard {
 		}
 
 		// look in database
-		if let Ok(value) = self.database.read().read(key) {
-			return Ok(value);
+		if self.database.read().contains_key(key) {
+			return self.database.read().read(key);
 		}
 
 		// Try to find in parent hierarchy.
@@ -189,16 +202,30 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
-	/// Returns a read/write guard to the `&T` for the `key`.
+	/// Returns a read/write guard to the `T` for the `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	fn get_ref<T>(&self, key: &str) -> Result<EntryGuard<&T>> {
+	pub fn get_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().get_ref(key_stripped);
 		}
-		todo!()
+
+		// look in database
+		if self.database.read().contains_key(key) {
+			return self.database.read().get_ref::<T>(key);
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
+		{
+			return parent.get_ref(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns to the root [`Databoard`] of the hierarchy.

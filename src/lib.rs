@@ -17,7 +17,7 @@ mod remappings;
 use alloc::sync::Arc;
 
 // flatten
-pub use databoard::Databoard;
+pub use databoard::{Databoard, DataboardPtr};
 pub use error::{Error, Result};
 pub use remappings::Remappings;
 

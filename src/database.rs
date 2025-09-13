@@ -5,7 +5,7 @@
 
 use crate::{
 	ConstString, Error,
-	entry::{EntryData, EntryGuard, EntryPtr},
+	entry::{EntryData, EntryGuard, EntryGuardInner, EntryPtr},
 	error::Result,
 	remappings::Remappings,
 };
@@ -62,7 +62,7 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn delete<T: Send + Sync + 'static>(&mut self, key: &str) -> Result<T> {
+	pub fn delete<T: Clone + Send + Sync + 'static>(&mut self, key: &str) -> Result<T> {
 		// check type
 		if let Some(entry) = self.storage.get(key) {
 			let en = &*entry.0.read().data;
@@ -73,14 +73,34 @@ impl Database {
 			return Err(Error::NotFound { key: key.into() });
 		}
 		if let Some(old) = self.storage.remove(key) {
-			let en = old.0.into_inner().data;
-			if let Ok(value) = en.downcast::<T>() {
-				return Ok(*value);
-			}
+			let en = &*old.0.read().data;
+			let t = en.downcast_ref::<T>();
+			return t
+				.cloned()
+				.map_or_else(|| Err(Error::WrongType { key: key.into() }), |v| Ok(v));
 		}
 
 		// We should never reach this!
 		Err(Error::Unexpected(file!().into(), line!()))
+	}
+
+	/// Returns a read/write guard to the `T` for the `key`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	pub fn get_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
+		if let Some(entry) = self.storage.get(key) {
+			// ensure that locks are dropped before creating reference
+			{
+				let en = &*entry.0.read().data;
+				if en.downcast_ref::<T>().is_none() {
+					return Err(Error::WrongType { key: key.into() });
+				}
+			}
+			return Ok(RwLock::new(EntryGuardInner::new(entry.clone())));
+		}
+
+		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a copy of the value of type `T` stored under `key`.
