@@ -16,7 +16,7 @@ use core::{
 };
 use spin::RwLock;
 
-/// Struct that holds all [`Databoard`](crate::databoard::Databoard) data.
+/// Holds all [`Databoard`](crate::databoard::Databoard) data.
 #[derive(Default)]
 pub struct Database {
 	storage: BTreeMap<ConstString, EntryPtr>,
@@ -30,7 +30,7 @@ impl Database {
 
 	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
 	/// # Errors
-	/// - if the entry has not the expected type `T`
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn contains<T: 'static>(&self, key: &str) -> Result<bool> {
 		if let Some(entry) = self.storage.get(key) {
 			let en = &*entry.0.read().data;
@@ -44,7 +44,7 @@ impl Database {
 
 	/// Creates a value of type `T` under `key`.
 	/// # Errors
-	/// - if `key` already exists
+	/// - [`Error::AlreadyExists`] if `key` already exists
 	pub fn create<T: Send + Sync + 'static>(&mut self, key: impl Into<ConstString>, value: T) -> Result<()> {
 		let key = key.into();
 		if self.storage.contains_key(&key) {
@@ -60,8 +60,8 @@ impl Database {
 
 	/// Returns a value of type `T` stored under `key` and deletes it from storage.
 	/// # Errors
-	/// - if `key` is not contained
-	/// - if the entry has not the expected type `T`
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn delete<T: Send + Sync + 'static>(&mut self, key: &str) -> Result<T> {
 		// check type
 		if let Some(entry) = self.storage.get(key) {
@@ -83,6 +83,38 @@ impl Database {
 		Err(Error::Unexpected(file!().into(), line!()))
 	}
 
+	/// Returns a copy of the value of type `T` stored under `key`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	pub fn read<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
+		self.storage.get(key).map_or_else(
+			|| Err(Error::NotFound { key: key.into() }),
+			|entry| {
+				let en = &*entry.0.read().data;
+				let t = en.downcast_ref::<T>();
+				t.cloned()
+					.map_or_else(|| Err(Error::WrongType { key: key.into() }), |v| Ok(v))
+			},
+		)
+	}
+
+	/// Returns the sequence id of an entry.
+	/// The sequence id starts with '1' and is increased at every change of an entry.
+	/// The sequence wraps around to '1' after reaching [`usize::MAX`] .
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	pub fn sequence_id(&self, key: &str) -> Result<usize> {
+		self.storage.get(key).map_or_else(
+			|| Err(Error::NotFound { key: key.into() }),
+			|entry| Ok(entry.read().sequence_id),
+		)
+	}
+
+	/// Updates a value of type `T` stored under `key` and returns the old value.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn update<T: Clone + Send + Sync + 'static>(&self, key: &str, value: T) -> Result<T> {
 		self.storage.get(key).map_or_else(
 			|| Err(Error::NotFound { key: key.into() }),
@@ -102,25 +134,6 @@ impl Database {
 					},
 				)
 			},
-		)
-	}
-
-	pub fn read<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
-		self.storage.get(key).map_or_else(
-			|| Err(Error::NotFound { key: key.into() }),
-			|entry| {
-				let en = &*entry.0.read().data;
-				let t = en.downcast_ref::<T>();
-				t.cloned()
-					.map_or_else(|| Err(Error::WrongType { key: key.into() }), |v| Ok(v))
-			},
-		)
-	}
-
-	pub fn sequence_id(&self, key: &str) -> Result<usize> {
-		self.storage.get(key).map_or_else(
-			|| Err(Error::NotFound { key: key.into() }),
-			|entry| Ok(entry.read().sequence_id),
 		)
 	}
 }

@@ -34,7 +34,7 @@ impl EntryPtr {
 	pub(crate) fn new<T: Send + Sync + 'static>(value: T) -> Self {
 		let data = EntryData {
 			data: Box::new(value),
-			// start above usize::MIN, so a value of usize::MIN indicates a wrap-around
+			// start sequence with 1
 			sequence_id: usize::MIN + 1,
 		};
 		Self(Box::new(RwLock::new(data)))

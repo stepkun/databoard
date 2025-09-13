@@ -33,7 +33,7 @@ pub struct Databoard {
 }
 
 impl Databoard {
-	/// Creates a [`DataboardPtr`] to a new `Databoard`.
+	/// Creates a [`DataboardPtr`] to a new [`Databoard`].
 	#[must_use]
 	pub fn new() -> DataboardPtr {
 		Arc::new(Self {
@@ -44,7 +44,7 @@ impl Databoard {
 		})
 	}
 
-	/// Creates a [`DataboardPtr`] to a new `Databoard` with given parameters.
+	/// Creates a [`DataboardPtr`] to a new [`Databoard`] with given parameters.
 	pub fn with(parent: Option<DataboardPtr>, remappings: Option<Remappings>, autoremap: bool) -> DataboardPtr {
 		let remappings = remappings.map_or_else(Remappings::default, |remappings| remappings);
 		let database = Arc::new(RwLock::new(Database::default()));
@@ -56,7 +56,7 @@ impl Databoard {
 		})
 	}
 
-	/// Creates a [`DataboardPtr`] to a new `Databoard` with a parent.
+	/// Creates a [`DataboardPtr`] to a new [`Databoard`] with a parent.
 	#[must_use]
 	pub fn with_parent(parent: DataboardPtr) -> DataboardPtr {
 		let database = Arc::new(RwLock::new(Database::default()));
@@ -94,7 +94,7 @@ impl Databoard {
 
 	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
 	/// # Errors
-	/// - if the entry has not the expected type `T`
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn contains<T: 'static>(&self, key: &str) -> Result<bool> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
@@ -117,10 +117,10 @@ impl Databoard {
 		Ok(false)
 	}
 
-	/// Returns a value of type `T` stored under `key` and deletes it from storage.
+	/// Returns a value of type `T` stored under `key` and deletes it from database.
 	/// # Errors
-	/// - if `key` is not contained
-	/// - if the entry has not the expected type `T`
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn delete<T: Send + Sync + 'static>(&self, key: &str) -> Result<T> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
@@ -145,7 +145,7 @@ impl Databoard {
 
 	/// Returns a copy of the raw [`EntryData`] stored under `key`.
 	/// # Errors
-	/// - if `key` is not contained
+	/// - [`Error::NotFound`] if `key` is not contained
 	fn entry(&self, key: &str) -> Result<EntryData> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
@@ -165,8 +165,8 @@ impl Databoard {
 
 	/// Returns a copy of the value of type `T` stored under `key`.
 	/// # Errors
-	/// - if `key` is not contained
-	/// - if the entry has not the expected type `T`
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
@@ -191,12 +191,12 @@ impl Databoard {
 
 	/// Returns a read/write guard to the `&T` for the `key`.
 	/// # Errors
-	/// - if `key` is not contained
-	/// - if the entry has not the expected type `T`
-	fn guard<T>(&self, key: &str) -> Result<EntryGuard<&T>> {
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	fn get_ref<T>(&self, key: &str) -> Result<EntryGuard<&T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().guard(key_stripped);
+			return self.root().get_ref(key_stripped);
 		}
 		todo!()
 	}
@@ -208,9 +208,46 @@ impl Databoard {
 			.map_or(self, |board| board.root())
 	}
 
-	/// Stores a value of type `T` under `key` and returns an eventually existing value.
+	/// Read needed remapping information to parent.
+	fn remapping_info(&self, key: &str) -> (ConstString, bool, bool) {
+		let (remapped_key, has_remapping) = self
+			.remappings
+			.find(key)
+			.map_or_else(|| (key.into(), false), |remapped| (remapped, true));
+
+		(remapped_key, has_remapping, self.autoremap)
+	}
+
+	/// Returns the sequence id of an entry.
+	/// The sequence id starts with '1' and is increased at every change of an entry.
+	/// The sequence wraps around to '1' after reaching [`usize::MAX`] .
 	/// # Errors
-	/// - if `key` already exists with a different type
+	/// - [`Error::NotFound`] if `key` is not contained
+	pub fn sequence_id(&self, key: &str) -> Result<usize> {
+		// if it is a key starting with an '@' redirect to root board
+		if let Some(key_stripped) = key.strip_prefix('@') {
+			return self.root().sequence_id(key_stripped);
+		}
+
+		// look in database
+		if let Ok(value) = self.database.read().sequence_id(key) {
+			return Ok(value);
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
+		{
+			return parent.sequence_id(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
+	}
+
+	/// Stores a value of type `T` under `key` and returns an eventually existing value of type `T`.
+	/// # Errors
+	/// - [`Error::WrongType`] if `key` already exists with a different type
 	pub fn set<T: Clone + Send + Sync + 'static>(&self, key: &str, value: T) -> Result<Option<T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
@@ -234,42 +271,6 @@ impl Databoard {
 		// If it is not remapped anywhere in hierarchy, create it in current `Blackboard`
 		self.database.write().create(key, value)?;
 		Ok(None)
-	}
-
-	/// Returns the sequence id of an entry.
-	/// The sequence id is increased at every change of an entry and will wrap around.
-	/// # Errors
-	/// - if `key` is not contained
-	pub fn sequence_id(&self, key: &str) -> Result<usize> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().sequence_id(key_stripped);
-		}
-
-		// look in database
-		if let Ok(value) = self.database.read().sequence_id(key) {
-			return Ok(value);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.sequence_id(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
-	}
-
-	/// Read needed remapping information to parent.
-	fn remapping_info(&self, key: &str) -> (ConstString, bool, bool) {
-		let (remapped_key, has_remapping) = self
-			.remappings
-			.find(key)
-			.map_or_else(|| (key.into(), false), |remapped| (remapped, true));
-
-		(remapped_key, has_remapping, self.autoremap)
 	}
 }
 
