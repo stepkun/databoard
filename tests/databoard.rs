@@ -328,15 +328,21 @@ fn referencing() {
 	assert_eq!(old, None);
 	assert!(databoard.get_mut_ref::<String>("test)").is_err());
 
+	// read test
 	let mut entry = databoard.get_mut_ref::<i32>("test").unwrap();
-	// read tests
 	assert_eq!(*entry, 42);
-	// write tests
+	drop(entry);
+	// no changes during holding the reference
+	assert_eq!(databoard.sequence_id("test").unwrap(), 1);
+	// write test
+	let mut entry = databoard.get_mut_ref::<i32>("test").unwrap();
 	*entry = 22;
 	*entry += 4;
 	*entry -= 2;
 	assert_eq!(*entry, 24);
 	drop(entry);
+	// multiple changes during holding a reference are counted as 1 change
+	assert_eq!(databoard.sequence_id("test").unwrap(), 2);
 	assert_eq!(databoard.get::<i32>("test").unwrap(), 24);
 
 	assert_eq!(databoard.delete::<i32>("test").unwrap(), 24);
