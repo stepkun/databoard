@@ -5,7 +5,7 @@
 
 use crate::{
 	ConstString, Error,
-	entry::{EntryData, EntryGuard, EntryGuardInner, EntryPtr},
+	entry::{EntryData, EntryGuard, EntryPtr},
 	error::Result,
 	remappings::Remappings,
 };
@@ -84,22 +84,24 @@ impl Database {
 		Err(Error::Unexpected(file!().into(), line!()))
 	}
 
-	/// Returns a read/write guard to the `T` of the `entry`stored under `key`.
-	/// The entry is locked for read & write while this reference is held.
-	/// You need to drop it before using `read` or `update`.
+	/// Returns a read/write guard to the `T` for the `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
+	pub fn get_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
-			// ensure that locks are dropped before creating reference
-			{
-				let en = &*entry.read().data;
-				if en.downcast_ref::<T>().is_none() {
-					return Err(Error::WrongType { key: key.into() });
-				}
+			// // ensure that locks are dropped before creating reference
+			// {
+			// 	let en = &*entry.0.read().data;
+			// 	if en.downcast_ref::<T>().is_none() {
+			// 		return Err(Error::WrongType { key: key.into() });
+			// 	}
+			// }
+			if let Some(guard) = EntryGuard::new(entry.clone()) {
+				return Ok(guard);
+			} else {
+				return Err(Error::WrongType { key: key.into() });
 			}
-			return Ok(EntryGuard::new(entry.clone()));
 		}
 
 		Err(Error::NotFound { key: key.into() })

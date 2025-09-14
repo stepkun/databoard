@@ -321,33 +321,22 @@ fn mixed_remapping() {
 #[test]
 fn referencing() {
 	let databoard = Databoard::new();
-	assert!(databoard.get_ref::<i32>("test)").is_err());
-	assert!(databoard.get_ref::<String>("test)").is_err());
+	assert!(databoard.get_mut_ref::<i32>("test)").is_err());
+	assert!(databoard.get_mut_ref::<String>("test)").is_err());
 
 	let old = databoard.set::<i32>("test", 42).unwrap();
 	assert_eq!(old, None);
-	assert!(databoard.get_ref::<String>("test)").is_err());
+	assert!(databoard.get_mut_ref::<String>("test)").is_err());
 
-	let mut entry_guard = databoard.get_ref::<i32>("test").unwrap();
-	// ensure that the entry is still accessible
-	assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
+	let mut entry = databoard.get_mut_ref::<i32>("test").unwrap();
 	// read tests
-	{
-		let entry = entry_guard.read();
-		assert_eq!(**entry, 42);
-		// @TODO: this should block!!
-		assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
-	}
-	// ensure that the entry is still accessible
-	assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
+	assert_eq!(*entry, 42);
 	// write tests
-	{
-		let mut entry = entry_guard.write();
-		**entry = 22;
-		**entry += 4;
-		**entry -= 2;
-		assert_eq!(**entry, 24);
-	}
+	*entry = 22;
+	*entry += 4;
+	*entry -= 2;
+	assert_eq!(*entry, 24);
+	drop(entry);
 	assert_eq!(databoard.get::<i32>("test").unwrap(), 24);
 
 	assert_eq!(databoard.delete::<i32>("test").unwrap(), 24);

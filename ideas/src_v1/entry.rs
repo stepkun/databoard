@@ -4,13 +4,14 @@
 #![allow(dead_code, unused)]
 
 use crate::{error::Result, remappings::Remappings};
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc};
+use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc};
 use core::{
 	any::Any,
 	marker::PhantomData,
 	ops::{Deref, DerefMut},
 };
-use spin::RwLock;
+use ouroboros::self_referencing;
+use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// The data stored in a [`Databoard`](crate::databoard::Databoard) entry.
 pub struct EntryData {
@@ -45,18 +46,41 @@ impl EntryData {
 /// Convenience type for the Arc around the [`EntryData`]
 pub type EntryPtr = Arc<RwLock<EntryData>>;
 
-/// Write-Locked entry guard.
-/// Until this value is dropped, a write lock is held on the entry.
-///
-/// Implements [`Deref`] & [`DerefMut`], providing access to the locked `T`.
-pub struct EntryGuard<T: 'static> {
-	inner: EntryGuardInner<T>,
-	modified: bool,
+/// A reference to the locked [`EntryData`].
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct EntryRef(pub(crate) EntryPtr);
+
+impl EntryRef {
+	pub(crate) fn new<T: Send + Sync + 'static>(value: T) -> Self {
+		let data = EntryData {
+			data: Box::new(value),
+			// start sequence with 1
+			sequence_id: usize::MIN + 1,
+		};
+		Self(Arc::new(RwLock::new(data)))
+	}
 }
 
-impl<T: 'static> Drop for EntryGuard<T> {
-	fn drop(&mut self) {
-		if self.modified {}
+/// Write-Locked entry.
+/// Until this value is dropped, the lock is held on the entry.
+///
+/// Implements [`Deref`], providing access to the locked `T`.
+pub struct EntryGuard<T: 'static>(EntryGuardInner<T>);
+
+impl<T: 'static> EntryGuard<T> {
+	/// Attempts to downcast the `Box<dyn Any + Send>` to `T`. If downcasting
+	/// succeeds, wraps the value and lock into [`EntryGuardInner`].
+	pub fn new(entry: EntryPtr) -> Option<Self> {
+		// Check if the inner value can be downcasted directly to `T`
+		let is_valid = entry.read().downcast_ref::<T>().is_some();
+		if is_valid {
+			let guard: RwLockWriteGuard<'static, EntryData> = entry.write();
+			let inner = EntryGuardInner::new(entry, |guard| entry.write());
+			Some(Self(inner))
+		} else {
+			None
+		}
 	}
 }
 
@@ -65,55 +89,34 @@ impl<T: 'static> Deref for EntryGuard<T> {
 
 	#[allow(unsafe_code)]
 	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.inner.ptr }
+		unsafe { &*self.0.ptr }
 	}
 }
 
 impl<T: 'static> DerefMut for EntryGuard<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		self.modified = true;
-		unsafe { &mut *self.inner.ptr }
+		// remember modification
+		self.0.modified = true;
+		unsafe { &mut *self.0.ptr }
 	}
 }
 
-impl<T: 'static> EntryGuard<T> {
-	pub fn new(entry: EntryPtr) -> Self {
-		let inner = EntryGuardInner::new(entry);
-		Self { inner, modified: false }
-	}
-}
-
-/// Inner data for the [`EntryGuard`].
-/// Implements [`Deref`] and [`DerefMut`], providing read and write access to the `T`.
-pub struct EntryGuardInner<T> {
+/// Self-referencing struct that holds
+/// - an [`EntryPtr`],
+/// - the locked `RwLockWriteGuard` around the [`EntryData`],
+/// - a reference to downcasted `T` borrowed from the `RwLockWriteGuard`.
+struct EntryGuardInner<T: 'static> {
 	entry: EntryPtr,
-	modified: bool,
+	guard: RwLockWriteGuard<'static, EntryData>,
 	ptr: *mut T,
-}
-
-impl<T> Deref for EntryGuardInner<T> {
-	type Target = T;
-
-	#[allow(unsafe_code)]
-	fn deref(&self) -> &Self::Target {
-		let t = self.entry.read();
-		unsafe { &*self.ptr }
-	}
-}
-
-impl<T> DerefMut for EntryGuardInner<T> {
-	#[allow(unsafe_code)]
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		self.modified = true;
-		unsafe { &mut *self.ptr }
-	}
+	modified: bool,
 }
 
 impl<T> Drop for EntryGuardInner<T> {
 	fn drop(&mut self) {
 		if self.modified {
-			self.entry.write().sequence_id += 1;
+			self.guard.sequence_id += 1;
 		}
 	}
 }
@@ -122,7 +125,7 @@ impl<T: 'static> EntryGuardInner<T> {
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
 	#[allow(clippy::expect_used)]
-	pub fn new(entry: EntryPtr) -> Self {
+	pub fn new(entry: EntryPtr, guard: RwLockWriteGuard<'static, EntryData>) -> Self {
 		let ptr = {
 			// we know this pointer is valid since the guard owns the EntryPtr
 			let mut x = &mut entry.write().data;
@@ -136,8 +139,9 @@ impl<T: 'static> EntryGuardInner<T> {
 
 		Self {
 			entry,
-			modified: false,
+			guard,
 			ptr,
+			modified: false,
 		}
 	}
 }
@@ -151,7 +155,7 @@ mod tests {
 
 	#[test]
 	const fn normal_types() {
-		is_normal::<EntryPtr>();
+		is_normal::<EntryRef>();
 		is_normal::<EntryData>();
 	}
 }

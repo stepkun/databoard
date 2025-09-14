@@ -6,7 +6,7 @@
 use crate::{
 	ConstString, Error,
 	database::Database,
-	entry::{EntryData, EntryGuard, EntryPtr},
+	entry::{EntryData, EntryGuard, EntryPtr, EntryRef},
 	error::Result,
 	remappings::Remappings,
 };
@@ -151,6 +151,31 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
+	/// Returns a copy of the raw [`EntryData`] stored under `key`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	fn entry(&self, key: &str) -> Result<EntryData> {
+		// if it is a key starting with an '@' redirect to root board
+		if let Some(key_stripped) = key.strip_prefix('@') {
+			return self.root().entry(key_stripped);
+		}
+
+		// look in database
+		if self.database.read().contains_key(key) {
+			todo!();
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
+		{
+			return parent.entry(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
+	}
+
 	/// Returns a copy of the value of type `T` stored under `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
@@ -177,9 +202,7 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
-	/// Returns a read/write guard to the `T` of the `entry`stored under `key`.
-	/// The entry is locked for read & write while this reference is held.
-	/// You need to drop it before using `get` or `set`.
+	/// Returns an [`RwLock`] guarded reference to the stored `T` for the `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
