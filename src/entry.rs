@@ -58,7 +58,7 @@ impl<T: 'static> Deref for EntryGuard<T> {
 
 	#[allow(unsafe_code)]
 	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.inner.ptr }
+		unsafe { &*self.inner.ptr_t }
 	}
 }
 
@@ -66,7 +66,7 @@ impl<T: 'static> DerefMut for EntryGuard<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.inner.modified = true;
-		unsafe { &mut *self.inner.ptr }
+		unsafe { &mut *self.inner.ptr_t }
 	}
 }
 
@@ -81,7 +81,8 @@ impl<T: 'static> EntryGuard<T> {
 /// Implements [`Deref`] and [`DerefMut`], providing read and write access to the `T`.
 pub struct EntryGuardInner<T: 'static> {
 	entry: EntryPtr,
-	ptr: *mut T,
+	ptr_t: *mut T,
+	ptr_seq_id: *mut usize,
 	modified: bool,
 }
 
@@ -90,7 +91,7 @@ impl<T: 'static> Deref for EntryGuardInner<T> {
 
 	#[allow(unsafe_code)]
 	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.ptr }
+		unsafe { &*self.ptr_t }
 	}
 }
 
@@ -98,14 +99,19 @@ impl<T: 'static> DerefMut for EntryGuardInner<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.modified = true;
-		unsafe { &mut *self.ptr }
+		unsafe { &mut *self.ptr_t }
 	}
 }
 
 impl<T: 'static> Drop for EntryGuardInner<T> {
+	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if self.modified {
-			self.entry.write().sequence_id += 1;
+		// manually removing lock because entry is permanently locked in new()
+		unsafe {
+			if self.modified {
+				*self.ptr_seq_id += 1;
+			}
+			self.entry.force_write_unlock();
 		}
 	}
 }
@@ -115,22 +121,26 @@ impl<T: 'static> EntryGuardInner<T> {
 	#[allow(clippy::coerce_container_to_any)]
 	#[allow(clippy::expect_used)]
 	pub fn new(entry: EntryPtr) -> Self {
-		let ptr = {
-			// @TODO: holding the lock is missing!!
-			let mut guard: RwLockWriteGuard<'_, EntryData> = entry.write();
-			// we know this pointer is valid since the guard owns the EntryPtr
-			let mut x = &mut guard.data;
+		// we know this pointer is valid since the guard owns the EntryPtr
+		let (ptr_t, ptr_seq_id) = {
+			let mut guard = entry.write();
+			let ptr_seq_id: *mut usize = unsafe { &raw mut guard.sequence_id };
+			// leak returns &'rwlock mut EntryData but locks RwLock forewer
+			let x = &mut RwLockWriteGuard::leak(guard).data;
+			// let x = &mut guard.data;
+			// let x = unsafe { &mut **entry.as_mut_ptr() };
 			let t = x
 				.downcast_mut::<T>()
 				.expect("downcast should be possible");
 
-			let ptr: *mut T = unsafe { t };
-			ptr
+			let ptr_t: *mut T = unsafe { t };
+			(ptr_t, ptr_seq_id)
 		};
 
 		Self {
 			entry,
-			ptr,
+			ptr_t,
+			ptr_seq_id,
 			modified: false,
 		}
 	}
@@ -140,12 +150,19 @@ impl<T: 'static> EntryGuardInner<T> {
 mod tests {
 	use super::*;
 
+	struct Dummy {
+		data: i32,
+	}
+
 	// check, that the auto traits are available
 	const fn is_normal<T: Sized + Send + Sync>() {}
 
 	#[test]
 	const fn normal_types() {
-		is_normal::<EntryPtr>();
+		is_normal::<Dummy>();
 		is_normal::<EntryData>();
+		is_normal::<EntryPtr>();
+		// is_normal::<EntryGuard<Dummy>>();
+		// is_normal::<EntryGuardInner<Dummy>>();
 	}
 }

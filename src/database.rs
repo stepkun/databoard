@@ -84,17 +84,19 @@ impl Database {
 		Err(Error::Unexpected(file!().into(), line!()))
 	}
 
-	/// Returns a read/write guard to the `T` of the `entry`stored under `key`.
+	/// Returns a read/write guard to the `T` of the `entry` stored under `key`.
 	/// The entry is locked for read & write while this reference is held.
 	/// Multiple changes during holding the reference are counted as a single change,
-	/// so `sequence_id()`will only increase by 1`.
-	/// You need to drop the received [`EntryGuard`] before using `delete, `read`, `update` or `sequence_id`.
+	/// so `sequence_id()`will only increase by 1.
+	///
+	/// You need to drop the received [`EntryGuard`] before using `delete`, `read`, `update` or `sequence_id`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get_mut_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
+		// @TODO: This is a non-optimal implementation
 		if let Some(entry) = self.storage.get(key) {
-			// ensure that locks are dropped before creating reference
+			// ensure that it is the right type before creating reference
 			{
 				let en = &*entry.read().data;
 				if en.downcast_ref::<T>().is_none() {

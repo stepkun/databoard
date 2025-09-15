@@ -39,6 +39,7 @@ unwrap_used = "deny"
 
 [dependencies]
 spin = { version = "0.10.0", default-features = false, features = [
+    "lock_api",
     ##"fair-mutex",
     ##"spin-mutex",
     ##"ticket-mutex",

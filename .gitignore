@@ -3,7 +3,7 @@ target
 Cargo.lock
 build/
 .vscode/
-ignore/
+ignore
 
 **/*.rs.bk
 *.pdb
