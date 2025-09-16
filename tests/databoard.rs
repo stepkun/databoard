@@ -321,16 +321,21 @@ fn mixed_remapping() {
 #[test]
 fn referencing() {
 	let databoard = Databoard::new();
+	assert!(databoard.get_ref::<i32>("test)").is_err());
+	assert!(databoard.get_ref::<String>("test)").is_err());
 	assert!(databoard.get_mut_ref::<i32>("test)").is_err());
 	assert!(databoard.get_mut_ref::<String>("test)").is_err());
 
 	let old = databoard.set::<i32>("test", 42).unwrap();
 	assert_eq!(old, None);
+	assert!(databoard.get_ref::<String>("test)").is_err());
 	assert!(databoard.get_mut_ref::<String>("test)").is_err());
 
 	// read test
-	let mut entry = databoard.get_mut_ref::<i32>("test").unwrap();
+	let mut entry = databoard.get_ref::<i32>("test").unwrap();
 	assert_eq!(*entry, 42);
+	// concurrent read should be possible
+	assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
 	drop(entry);
 	// no changes during holding the reference
 	assert_eq!(databoard.sequence_id("test").unwrap(), 1);

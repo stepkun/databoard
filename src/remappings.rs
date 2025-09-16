@@ -76,6 +76,22 @@ impl Remappings {
 		None
 	}
 
+	/// Returns the remapped name if there is one, otherwise the original name.
+	#[must_use]
+	pub fn remap(&self, name: &str) -> ConstString {
+		for (original, remapped) in &self.0 {
+			if original.as_ref() == name {
+				// is the shortcut '{=}' used?
+				return if remapped.as_ref() == "{=}" {
+					name.into()
+				} else {
+					remapped.clone()
+				};
+			}
+		}
+		name.into()
+	}
+
 	/// Optimize for size
 	pub fn shrink(&mut self) {
 		self.0.shrink_to_fit();

@@ -3,16 +3,20 @@
 
 #![allow(dead_code, unused)]
 
+#[cfg(feature = "std")]
+extern crate std;
+
 use crate::{
 	ConstString, Error,
 	database::Database,
-	entry::{EntryData, EntryGuard, EntryPtr},
+	entry::{EntryData, EntryGuardRead, EntryGuardWrite, EntryPtr},
 	error::Result,
 	remappings::Remappings,
 };
 use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc};
 use core::{
 	any::Any,
+	fmt::Debug,
 	ops::{Deref, DerefMut},
 };
 use spin::RwLock;
@@ -21,6 +25,7 @@ use spin::RwLock;
 pub type DataboardPtr = Arc<Databoard>;
 
 /// The Databoard implementation.
+#[derive(Default)]
 pub struct Databoard {
 	/// [`Database`] of this `Databoard`.
 	/// It is behind an `RwLock` to protect against data races.
@@ -63,6 +68,11 @@ impl Databoard {
 		})
 	}
 
+	/// Returns a reference to the guarded Database.
+	pub const fn as_database(&self) -> &RwLock<Database> {
+		&self.database
+	}
+
 	/// Creates a [`DataboardPtr`] to a new [`Databoard`] using the given parent.
 	/// The parents entries are automatically remapped into the new databoard.
 	#[must_use]
@@ -103,7 +113,7 @@ impl Databoard {
 	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn contains<T: 'static>(&self, key: &str) -> Result<bool> {
+	pub fn contains<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<bool> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().contains::<T>(key_stripped);
@@ -125,11 +135,17 @@ impl Databoard {
 		Ok(false)
 	}
 
+	/// Prints the content of the [`Databoard`] for debugging purpose.
+	#[cfg(feature = "std")]
+	pub fn debug_message(&self) {
+		std::println!("not yet implemented");
+	}
+
 	/// Returns a value of type `T` stored under `key` and deletes it from database.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn delete<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
+	pub fn delete<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().delete(key_stripped);
@@ -151,11 +167,36 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
+	/// Returns a clone of the [`EntryPtr`] stored under `key`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	pub fn entry(&self, key: &str) -> Result<EntryPtr> {
+		// if it is a key starting with an '@' redirect to root board
+		if let Some(key_stripped) = key.strip_prefix('@') {
+			return self.root().entry(key_stripped);
+		}
+
+		// look in database
+		if self.database.read().contains_key(key) {
+			return self.database.read().entry(key);
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
+		{
+			return parent.entry(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
+	}
+
 	/// Returns a copy of the value of type `T` stored under `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get<T: Clone + Send + Sync + 'static>(&self, key: &str) -> Result<T> {
+	pub fn get<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().get(key_stripped);
@@ -186,7 +227,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: 'static>(&self, key: &str) -> Result<EntryGuard<T>> {
+	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardWrite<T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().get_mut_ref(key_stripped);
@@ -208,6 +249,44 @@ impl Databoard {
 		Err(Error::NotFound { key: key.into() })
 	}
 
+	/// Returns a read guard to the `T` of the `entry` stored under `key`.
+	/// The entry is locked for write while this reference is held.
+	///
+	/// You need to drop the received [`EntryGuard`] before using `delete` or `set`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardRead<T>> {
+		// if it is a key starting with an '@' redirect to root board
+		if let Some(key_stripped) = key.strip_prefix('@') {
+			return self.root().get_ref(key_stripped);
+		}
+
+		// look in database
+		if self.database.read().contains_key(key) {
+			return self.database.read().get_ref::<T>(key);
+		}
+
+		// Try to find in parent hierarchy.
+		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
+		if let Some(parent) = &self.parent
+			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
+		{
+			return parent.get_ref(&parent_key);
+		}
+
+		Err(Error::NotFound { key: key.into() })
+	}
+
+	/// Returns the cloned remappings, if ther are any, otherwise `None`.
+	pub fn remappings(&self) -> Option<Remappings> {
+		if self.remappings.is_empty() {
+			None
+		} else {
+			Some(self.remappings.clone())
+		}
+	}
+
 	/// Returns to the root [`Databoard`] of the hierarchy.
 	fn root(&self) -> &Self {
 		self.parent
@@ -217,10 +296,20 @@ impl Databoard {
 
 	/// Read needed remapping information to parent.
 	fn remapping_info(&self, key: &str) -> (ConstString, bool, bool) {
-		let (remapped_key, has_remapping) = self
-			.remappings
-			.find(key)
-			.map_or_else(|| (key.into(), false), |remapped| (remapped, true));
+		let (remapped_key, has_remapping) = self.remappings.find(key).map_or_else(
+			|| (key.into(), false),
+			|remapped| {
+				// stripe eventually existing brackets
+				let remapped = remapped
+					.strip_prefix('{')
+					.unwrap_or(&remapped)
+					.strip_suffix('}')
+					.unwrap_or(&remapped)
+					.into();
+
+				(remapped, true)
+			},
+		);
 
 		(remapped_key, has_remapping, self.autoremap)
 	}
@@ -255,7 +344,7 @@ impl Databoard {
 	/// Stores a value of type `T` under `key` and returns an eventually existing value of type `T`.
 	/// # Errors
 	/// - [`Error::WrongType`] if `key` already exists with a different type
-	pub fn set<T: Clone + Send + Sync + 'static>(&self, key: &str, value: T) -> Result<Option<T>> {
+	pub fn set<T: Any + Clone + Send + Sync>(&self, key: &str, value: T) -> Result<Option<T>> {
 		// if it is a key starting with an '@' redirect to root board
 		if let Some(key_stripped) = key.strip_prefix('@') {
 			return self.root().set(key_stripped, value);

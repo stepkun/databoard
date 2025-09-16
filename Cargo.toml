@@ -2,7 +2,7 @@
 [package]
 resolver = "3"
 name = "databoard"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE"
 authors = ["stepkun <stephan.kunz@kabelbw.de>"]
@@ -39,7 +39,7 @@ unwrap_used = "deny"
 
 [dependencies]
 spin = { version = "0.10.0", default-features = false, features = [
-    "lock_api",
+    ##"lock_api",
     ##"fair-mutex",
     ##"spin-mutex",
     ##"ticket-mutex",
