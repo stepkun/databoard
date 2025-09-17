@@ -10,18 +10,21 @@ use core::ops::{Deref, DerefMut};
 /// Checks whether the given key is a constant assignment.
 #[must_use]
 pub fn is_const_assignment(key: &str) -> bool {
-	!key.starts_with('{') && !key.ends_with('}')
+	!key.starts_with('{') && !key.ends_with('}') || key.contains('"') || key.contains(':') || key.contains('\'')
 }
 
 /// Checks whether the given key is a pointer into a [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_board_pointer(key: &str) -> bool {
-	key.starts_with('{') && key.ends_with('}')
+	key.starts_with('{') && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
 }
 
 /// Returns Some(literal) of the [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 #[must_use]
 pub fn strip_board_pointer(key: &str) -> Option<ConstString> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return None;
+	}
 	Some(key.strip_prefix('{')?.strip_suffix('}')?.into())
 }
 
@@ -29,6 +32,9 @@ pub fn strip_board_pointer(key: &str) -> Option<ConstString> {
 /// # Errors
 /// - if is not a [`Databoard`](crate::databoard) pointer, the error contains the unchanged key.
 pub fn check_board_pointer(key: &str) -> core::result::Result<ConstString, &str> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return Err(key);
+	}
 	key.strip_prefix('{').map_or_else(
 		|| Err(key),
 		|v| {
@@ -42,6 +48,9 @@ pub fn check_board_pointer(key: &str) -> core::result::Result<ConstString, &str>
 /// # Errors
 /// - if is not a current/local [`Databoard`](crate::databoard) `key`, the error contains the unchanged `key`.
 pub fn check_local_key(key: &str) -> core::result::Result<ConstString, &str> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return Err(key);
+	}
 	key.strip_prefix("_")
 		.map_or_else(|| Err(key), |v| Ok(v.into()))
 }
@@ -49,13 +58,16 @@ pub fn check_local_key(key: &str) -> core::result::Result<ConstString, &str> {
 /// Checks whether the given key is a pointer into current/local [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_local_pointer(key: &str) -> bool {
-	key.starts_with("{_") && key.ends_with('}')
+	key.starts_with("{_") && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
 }
 
 /// Returns Some(literal) of the current/local [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 /// The leading `_` is removed from the literal.
 #[must_use]
 pub fn strip_local_pointer(key: &str) -> Option<ConstString> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return None;
+	}
 	Some(key.strip_prefix("{_")?.strip_suffix('}')?.into())
 }
 
@@ -63,6 +75,9 @@ pub fn strip_local_pointer(key: &str) -> Option<ConstString> {
 /// # Errors
 /// - if is not a current/local [`Databoard`](crate::databoard) pointer, the error contains the unchanged key.
 pub fn check_local_pointer(key: &str) -> core::result::Result<ConstString, &str> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return Err(key);
+	}
 	key.strip_prefix("{_").map_or_else(
 		|| Err(key),
 		|v| {
@@ -76,6 +91,9 @@ pub fn check_local_pointer(key: &str) -> core::result::Result<ConstString, &str>
 /// # Errors
 /// - if is not a top level [`Databoard`](crate::databoard) `key`, the error contains the unchanged `key`.
 pub fn check_top_level_key(key: &str) -> core::result::Result<ConstString, &str> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return Err(key);
+	}
 	key.strip_prefix("@")
 		.map_or_else(|| Err(key), |v| Ok(v.into()))
 }
@@ -83,13 +101,16 @@ pub fn check_top_level_key(key: &str) -> core::result::Result<ConstString, &str>
 /// Checks whether the given key is a pointer into top level [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_top_level_pointer(key: &str) -> bool {
-	key.starts_with("{@") && key.ends_with('}')
+	key.starts_with("{@") && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
 }
 
 /// Returns Some(literal) of the top level [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 /// The leading `@` is removed from the literal.
 #[must_use]
 pub fn strip_top_level_pointer(key: &str) -> Option<ConstString> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return None;
+	}
 	Some(key.strip_prefix("{@")?.strip_suffix('}')?.into())
 }
 
@@ -97,6 +118,9 @@ pub fn strip_top_level_pointer(key: &str) -> Option<ConstString> {
 /// # Errors
 /// - if is not a top level [`Databoard`](crate::databoard) pointer, the error contains the unchanged pointer.
 pub fn check_top_level_pointer(key: &str) -> core::result::Result<ConstString, &str> {
+	if key.contains('"') || key.contains(':') || key.contains('\'') {
+		return Err(key);
+	}
 	key.strip_prefix("{@").map_or_else(
 		|| Err(key),
 		|v| {
@@ -116,13 +140,16 @@ type RemappingEntry = (ConstString, ConstString);
 /// The following rules between `key`and `value` are valid:
 /// - `key`and `value` are literals.
 /// - The `key`s may not start with the characters `@` and `_`, these are reserved.
+/// - The `key`s may not contain any of the following characters: [`:`, `"`, `'`].
+/// - A `value` **NOT** wrapped in brackets is a constant,
+///   or a `value` containing any of the following characters: [`:`, `"`, `'`]
+///   is a constant assignment e.g. `literal` or `{x: 1, y: 2}` or `{"value"}`.
+///   It does not access a [`Databoard`](crate::databoard).
+///   It is helpful in combination with types that implement the trait [`FromStr`](core::str::FromStr) to create a distinct value.
 /// - A `value` wrapped in brackets is a `remapped_key` to a parent [`Databoard`](crate::databoard), e.g. `{remapped_key}`.
 ///  - A `remapped_key` starting with `@` is a redirection to the top level [`Databoard`](crate::databoard), e.g. `{@remapped_key}`.
 ///  - A `remapped_key` starting with `_` is a restriction to the current level [`Databoard`](crate::databoard), e.g. `{_remapped_key}`.
 /// - The `value` `{=}` is a shortcut for the redirection with the same name as in `key`, e.g. `{=}`.
-/// - A `value` **NOT** wrapped in brackets is a constant assignment to the key, e.g. `literal`.
-///   It does not access a [`Databoard`](crate::databoard).
-///   It is helpful in combination with types that implement the trait [`FromStr`](core::str::FromStr) to create a distinct value.
 #[derive(Clone, Debug, Default)]
 #[repr(transparent)]
 pub struct Remappings(Vec<RemappingEntry>);

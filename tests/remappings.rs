@@ -14,6 +14,9 @@ use databoard::{
 #[test]
 fn const_assignment_helpers() {
 	assert!(is_const_assignment("key"));
+	assert!(is_const_assignment(r#"{"x":11,"y":12}"#));
+	assert!(is_const_assignment(r#"json:{"x":9,"y":10}"#));
+	assert!(is_const_assignment("{'x'}"));
 	assert!(!is_const_assignment("{key}"));
 	assert!(!is_const_assignment("key}"));
 	assert!(!is_const_assignment("{key"));
@@ -24,11 +27,13 @@ fn key_helpers() {
 	assert_eq!(check_local_key("_key"), Ok("key".into()));
 	assert_eq!(check_local_key("@key"), Err("@key"));
 	assert_eq!(check_local_key("key"), Err("key"));
+	assert_eq!(check_local_key("'key"), Err("'key"));
 	assert_eq!(check_local_key("{_key}"), Err("{_key}"));
 
 	assert_eq!(check_top_level_key("@key"), Ok("key".into()));
 	assert_eq!(check_top_level_key("_key"), Err("_key"));
 	assert_eq!(check_top_level_key("key"), Err("key"));
+	assert_eq!(check_top_level_key("'key"), Err("'key"));
 	assert_eq!(check_top_level_key("{@key}"), Err("{@key}"));
 }
 
@@ -38,22 +43,31 @@ fn board_pointer_helpers() {
 	assert!(is_board_pointer("{_key}"));
 	assert!(is_board_pointer("{@key}"));
 	assert!(!is_board_pointer("key"));
+	assert!(!is_board_pointer("'key"));
 	assert!(!is_board_pointer("key}"));
 	assert!(!is_board_pointer("{key"));
+	assert!(!is_board_pointer(r#"{"x":11,"y":12}"#));
+	assert!(!is_board_pointer(r#"json:{"x":9,"y":10}"#));
 
 	assert_eq!(strip_board_pointer("{key}"), Some("key".into()));
 	assert_eq!(strip_board_pointer("{_key}"), Some("_key".into()));
 	assert_eq!(strip_board_pointer("{@key}"), Some("@key".into()));
 	assert_eq!(strip_board_pointer("key"), None);
+	assert_eq!(strip_board_pointer("'key"), None);
 	assert_eq!(strip_board_pointer("key}"), None);
 	assert_eq!(strip_board_pointer("{key"), None);
+	assert_eq!(strip_board_pointer(r#"{"x":11,"y":12}"#), None);
+	assert_eq!(strip_board_pointer(r#"json:{"x":9,"y":10}"#), None);
 
 	assert_eq!(check_board_pointer("{key}"), Ok("key".into()));
 	assert_eq!(check_board_pointer("{_key}"), Ok("_key".into()));
 	assert_eq!(check_board_pointer("{@key}"), Ok("@key".into()));
 	assert_eq!(check_board_pointer("key"), Err("key"));
+	assert_eq!(check_board_pointer("'key"), Err("'key"));
 	assert_eq!(check_board_pointer("key}"), Err("key}"));
 	assert_eq!(check_board_pointer("{key"), Err("{key"));
+	assert_eq!(check_board_pointer(r#"{"x":11,"y":12}"#), Err(r#"{"x":11,"y":12}"#));
+	assert_eq!(check_board_pointer(r#"json:{"x":9,"y":10}"#), Err(r#"json:{"x":9,"y":10}"#));
 }
 
 #[test]
@@ -63,45 +77,68 @@ fn local_pointer_helpers() {
 	assert!(!is_local_pointer("{key}"));
 	assert!(!is_local_pointer("_key}"));
 	assert!(!is_local_pointer("{_key"));
+	assert!(!is_local_pointer("{_'key}"));
 	assert!(!is_local_pointer("_key"));
+	assert!(!is_local_pointer("key"));
+	assert!(!is_local_pointer("'key"));
+	assert!(!is_local_pointer(r#"{"x":11,"y":12}"#));
+	assert!(!is_local_pointer(r#"json:{"x":9,"y":10}"#));
 
 	assert_eq!(strip_local_pointer("{_key}"), Some("key".into()));
 	assert_eq!(strip_local_pointer("{key}"), None);
+	assert_eq!(strip_local_pointer("{_'key}"), None);
 	assert_eq!(strip_local_pointer("{@key}"), None);
 	assert_eq!(strip_local_pointer("key"), None);
 	assert_eq!(strip_local_pointer("key}"), None);
 	assert_eq!(strip_local_pointer("{key"), None);
+	assert_eq!(strip_local_pointer(r#"{"x":11,"y":12}"#), None);
+	assert_eq!(strip_local_pointer(r#"json:{"x":9,"y":10}"#), None);
 
 	assert_eq!(check_local_pointer("{_key}"), Ok("key".into()));
 	assert_eq!(check_local_pointer("{key}"), Err("{key}"));
+	assert_eq!(check_local_pointer("{_'key}"), Err("{_'key}"));
 	assert_eq!(check_local_pointer("{@key}"), Err("{@key}"));
 	assert_eq!(check_local_pointer("key"), Err("key"));
 	assert_eq!(check_local_pointer("key}"), Err("key}"));
 	assert_eq!(check_local_pointer("{key"), Err("{key"));
+	assert_eq!(check_local_pointer(r#"{"x":11,"y":12}"#), Err(r#"{"x":11,"y":12}"#));
+	assert_eq!(check_local_pointer(r#"json:{"x":9,"y":10}"#), Err(r#"json:{"x":9,"y":10}"#));
 }
 
 #[test]
 fn top_level_pointer_helpers() {
 	assert!(is_top_level_pointer("{@key}"));
+	assert!(!is_top_level_pointer("{@key'}"));
 	assert!(!is_top_level_pointer("{_key}"));
 	assert!(!is_top_level_pointer("{key}"));
 	assert!(!is_top_level_pointer("@key}"));
 	assert!(!is_top_level_pointer("{@key"));
 	assert!(!is_top_level_pointer("@key"));
+	assert!(!is_top_level_pointer(r#"{"x":11,"y":12}"#));
+	assert!(!is_top_level_pointer(r#"json:{"x":9,"y":10}"#));
 
 	assert_eq!(strip_top_level_pointer("{@key}"), Some("key".into()));
 	assert_eq!(strip_top_level_pointer("{key}"), None);
+	assert_eq!(strip_top_level_pointer("{@'key}"), None);
 	assert_eq!(strip_top_level_pointer("{_key}"), None);
 	assert_eq!(strip_top_level_pointer("key"), None);
 	assert_eq!(strip_top_level_pointer("key}"), None);
 	assert_eq!(strip_top_level_pointer("{key"), None);
+	assert_eq!(strip_top_level_pointer(r#"{"x":11,"y":12}"#), None);
+	assert_eq!(strip_top_level_pointer(r#"json:{"x":9,"y":10}"#), None);
 
 	assert_eq!(check_top_level_pointer("{@key}"), Ok("key".into()));
 	assert_eq!(check_top_level_pointer("{key}"), Err("{key}"));
+	assert_eq!(check_top_level_pointer("{@'key}"), Err("{@'key}"));
 	assert_eq!(check_top_level_pointer("{_key}"), Err("{_key}"));
 	assert_eq!(check_top_level_pointer("key"), Err("key"));
 	assert_eq!(check_top_level_pointer("key}"), Err("key}"));
 	assert_eq!(check_top_level_pointer("{key"), Err("{key"));
+	assert_eq!(check_top_level_pointer(r#"{"x":11,"y":12}"#), Err(r#"{"x":11,"y":12}"#));
+	assert_eq!(
+		check_top_level_pointer(r#"json:{"x":9,"y":10}"#),
+		Err(r#"json:{"x":9,"y":10}"#)
+	);
 }
 
 #[test]
