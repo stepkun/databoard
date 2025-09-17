@@ -6,12 +6,12 @@ version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE"
 authors = ["stepkun <stephan.kunz@kabelbw.de>"]
-description = "Datastore/Blackboard immplementation"
+description = "Provides a hierarchical key-value-store"
 repository = "https://github.com/stepkun/databoard.git"
 homepage = "http://github.com/stepkun/databoard.git"
 documentation = "https://docs.rs/databoard"
 readme = "README.md"
-keywords = ["blackboard", "datastore"]
+keywords = ["blackboard", "data", "key", "value", "store"]
 categories = ["development-tools"]
 exclude = ["laze*", "benches/**", "embedded/**", "examples/**", "tests/**"]
 

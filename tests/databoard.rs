@@ -188,11 +188,11 @@ fn auto_remapping() {
 	assert_eq!(root.get::<i32>("test").unwrap(), 40);
 	assert_eq!(level1.get::<i32>("test").unwrap(), 40);
 	assert_eq!(level2.get::<i32>("test").unwrap(), 40);
-	assert!(root.get::<i32>("test1").is_err());
+	assert_eq!(root.get::<i32>("test1").unwrap(), 41);
 	assert_eq!(level1.get::<i32>("test1").unwrap(), 41);
 	assert_eq!(level2.get::<i32>("test1").unwrap(), 41);
-	assert!(root.get::<i32>("test2").is_err());
-	assert!(level1.get::<i32>("test2").is_err());
+	assert_eq!(root.get::<i32>("test2").unwrap(), 42);
+	assert_eq!(level1.get::<i32>("test2").unwrap(), 42);
 	assert_eq!(level2.get::<i32>("test2").unwrap(), 42);
 
 	// set 'test' in level1
@@ -218,14 +218,14 @@ fn auto_remapping() {
 fn manual_remapping() {
 	let root = Databoard::new();
 	let mut remappings = Remappings::default();
-	remappings.add("test", "test");
-	remappings.add("test1", "test");
+	remappings.add("test", "{=}");
+	remappings.add("test1", "{test}");
 	let level1 = Databoard::with(Some(root.clone()), Some(remappings), false);
 	let mut remappings = Remappings::default();
-	remappings.add("test", "test");
-	remappings.add("test1", "test1");
-	remappings.add("test2", "test");
-	remappings.add("testX", "test1");
+	remappings.add("test", "{test}");
+	remappings.add("test1", "{test1}");
+	remappings.add("test2", "{test}");
+	remappings.add("testX", "{test1}");
 	let level2 = Databoard::with(Some(level1.clone()), Some(remappings), false);
 
 	// set 'test' in level2
@@ -279,10 +279,10 @@ fn manual_remapping() {
 fn mixed_remapping() {
 	let root = Databoard::new();
 	let mut remappings = Remappings::default();
-	remappings.add("manual1", "manual");
+	remappings.add("manual1", "{manual}");
 	let level1 = Databoard::with(Some(root.clone()), Some(remappings), true);
 	let mut remappings = Remappings::default();
-	remappings.add("manual2", "manual1");
+	remappings.add("manual2", "{manual1}");
 	let level2 = Databoard::with(Some(level1.clone()), Some(remappings), true);
 
 	// set 'test' in root

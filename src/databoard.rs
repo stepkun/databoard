@@ -1,5 +1,5 @@
 // Copyright © 2025 Stephan Kunz
-//! Implementation of the [`Databoard`].
+//! Implements the [`Databoard`].
 
 #![allow(dead_code, unused)]
 
@@ -7,15 +7,16 @@
 extern crate std;
 
 use crate::{
-	ConstString, Error,
+	ConstString, Error, check_board_pointer, check_local_pointer, check_top_level_key, check_top_level_pointer,
 	database::Database,
 	entry::{EntryData, EntryGuardRead, EntryGuardWrite, EntryPtr},
 	error::Result,
-	remappings::Remappings,
+	is_const_assignment,
+	remappings::{Remappings, check_local_key},
 };
 use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, sync::Arc};
 use core::{
-	any::Any,
+	any::{Any, TypeId},
 	fmt::Debug,
 	ops::{Deref, DerefMut},
 };
@@ -24,7 +25,7 @@ use spin::RwLock;
 /// Convenience type for a thread safe pointer to a [`Databoard`].
 pub type DataboardPtr = Arc<Databoard>;
 
-/// The Databoard implementation.
+/// Implements a hierarchical databoard.
 #[derive(Default)]
 pub struct Databoard {
 	/// [`Database`] of this `Databoard`.
@@ -68,11 +69,6 @@ impl Databoard {
 		})
 	}
 
-	/// Returns a reference to the guarded Database.
-	pub const fn as_database(&self) -> &RwLock<Database> {
-		&self.database
-	}
-
 	/// Creates a [`DataboardPtr`] to a new [`Databoard`] using the given parent.
 	/// The parents entries are automatically remapped into the new databoard.
 	#[must_use]
@@ -89,50 +85,85 @@ impl Databoard {
 	/// Returns `true` if a certain `key` is available, otherwise `false`.
 	#[must_use]
 	pub fn contains_key(&self, key: &str) -> bool {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().contains_key(key_stripped);
-		}
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().contains_key(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().contains_key(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.contains_key(&board_pointer)
+								} else {
+									false
+								}
+							}
+							Err(_) => false,
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.contains_key(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.read().contains_key(original_key)
+					}
 
-		// look in database
-		if self.database.read().contains_key(key) {
-			return true;
-		}
+					// 	// look in database
+					// 	if self.database.read().contains_key(original_key) {
+					// 		return true;
+					// 	}
 
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.contains_key(&parent_key);
-		}
+					// 	// Try to find in parent hierarchy.
+					// 	let (parent_key, has_remapping) = self.remapping_info_old(original_key);
+					// 	if let Some(parent) = &self.parent
+					// 		&& (has_remapping || (self.autoremap && parent.contains_key(&parent_key)))
+					// 	{
+					// 		return parent.contains_key(&parent_key);
+					// 	}
 
-		false
+					// 	false
+				}
+			},
+		}
 	}
 
 	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn contains<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<bool> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().contains::<T>(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().contains::<T>(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().contains::<T>(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.contains::<T>(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Ok(false),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.contains::<T>(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.read().contains::<T>(original_key)
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains::<T>(key)? {
-			return Ok(true);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains::<T>(&parent_key)?))
-		{
-			return Ok(true);
-		}
-
-		Ok(false)
 	}
 
 	/// Prints the content of the [`Databoard`] for debugging purpose.
@@ -146,50 +177,76 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn delete<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().delete(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().delete(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.write().delete(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.delete(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.delete(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.write().delete(original_key)
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains_key(key) {
-			return self.database.write().delete(key);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.delete(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a clone of the [`EntryPtr`] stored under `key`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	pub fn entry(&self, key: &str) -> Result<EntryPtr> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().entry(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().entry(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().entry(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.entry(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.entry(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.read().entry(original_key)
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains_key(key) {
-			return self.database.read().entry(key);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.entry(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a copy of the value of type `T` stored under `key`.
@@ -197,25 +254,38 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().get(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().get(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().read(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.get(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.get(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.read().read(original_key)
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains_key(key) {
-			return self.database.read().read(key);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.get(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a read/write guard to the `T` of the `entry` stored under `key`.
@@ -223,59 +293,97 @@ impl Databoard {
 	/// Multiple changes during holding the reference are counted as a single change,
 	/// so `sequence_id()`will only increase by 1.
 	///
-	/// You need to drop the received [`EntryGuard`] before using `delete`, `get`, `set` or `sequence_id`.
+	/// You need to drop the received [`EntryGuardWrite`] before using `delete`, `get`, `set` or `sequence_id`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardWrite<T>> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().get_mut_ref(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().get_mut_ref(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().get_mut_ref(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.get_mut_ref(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.get_mut_ref(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						if self.database.read().contains_key(original_key) {
+							self.database.read().get_mut_ref(original_key)
+						} else {
+							Err(Error::NotFound {
+								key: original_key.into(),
+							})
+						}
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains_key(key) {
-			return self.database.read().get_mut_ref::<T>(key);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.get_mut_ref(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns a read guard to the `T` of the `entry` stored under `key`.
 	/// The entry is locked for write while this reference is held.
 	///
-	/// You need to drop the received [`EntryGuard`] before using `delete` or `set`.
+	/// You need to drop the received [`EntryGuardRead`] before using `delete` or `set`.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardRead<T>> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().get_ref(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().get_ref(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().get_ref(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.get_ref(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.get_ref(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						if self.database.read().contains_key(original_key) {
+							self.database.read().get_ref(original_key)
+						} else {
+							Err(Error::NotFound {
+								key: original_key.into(),
+							})
+						}
+					}
+				}
+			},
 		}
-
-		// look in database
-		if self.database.read().contains_key(key) {
-			return self.database.read().get_ref::<T>(key);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.get_ref(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Returns the cloned remappings, if ther are any, otherwise `None`.
@@ -295,23 +403,13 @@ impl Databoard {
 	}
 
 	/// Read needed remapping information to parent.
-	fn remapping_info(&self, key: &str) -> (ConstString, bool, bool) {
-		let (remapped_key, has_remapping) = self.remappings.find(key).map_or_else(
-			|| (key.into(), false),
-			|remapped| {
-				// stripe eventually existing brackets
-				let remapped = remapped
-					.strip_prefix('{')
-					.unwrap_or(&remapped)
-					.strip_suffix('}')
-					.unwrap_or(&remapped)
-					.into();
+	fn remapping_info(&self, key: &str) -> (ConstString, bool) {
+		let (remapped_key, has_remapping) = self
+			.remappings
+			.find(key)
+			.map_or_else(|| (key.into(), false), |remapped| (remapped, true));
 
-				(remapped, true)
-			},
-		);
-
-		(remapped_key, has_remapping, self.autoremap)
+		(remapped_key, has_remapping)
 	}
 
 	/// Returns the sequence id of an entry.
@@ -320,53 +418,87 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	pub fn sequence_id(&self, key: &str) -> Result<usize> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().sequence_id(key_stripped);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().sequence_id(&stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().sequence_id(&local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.sequence_id(&board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.sequence_id(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						self.database.read().sequence_id(original_key)
+					}
+				}
+			},
 		}
-
-		// look in database
-		if let Ok(value) = self.database.read().sequence_id(key) {
-			return Ok(value);
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.sequence_id(&parent_key);
-		}
-
-		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Stores a value of type `T` under `key` and returns an eventually existing value of type `T`.
 	/// # Errors
 	/// - [`Error::WrongType`] if `key` already exists with a different type
 	pub fn set<T: Any + Clone + Send + Sync>(&self, key: &str, value: T) -> Result<Option<T>> {
-		// if it is a key starting with an '@' redirect to root board
-		if let Some(key_stripped) = key.strip_prefix('@') {
-			return self.root().set(key_stripped, value);
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().set(&stripped_key, value),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => {
+					let old = self.database.read().update(&local_key, value)?;
+					Ok(Some(old))
+				}
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.set(&board_pointer, value)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.set(&parent_key, value)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						if self.contains_key(original_key) {
+							let old = self.database.read().update(original_key, value)?;
+							Ok(Some(old))
+						} else {
+							self.database
+								.write()
+								.create(original_key, value)?;
+							Ok(None)
+						}
+					}
+				}
+			},
 		}
-
-		// first look in own database
-		if self.database.read().contains_key(key) {
-			let old = self.database.read().update(key, value)?;
-			return Ok(Some(old));
-		}
-
-		// Try to find in parent hierarchy.
-		let (parent_key, has_remapping, autoremap) = self.remapping_info(key);
-		if let Some(parent) = &self.parent
-			&& (has_remapping || (autoremap && parent.contains_key(&parent_key)))
-		{
-			return parent.set(&parent_key, value);
-		}
-
-		// If it is not remapped anywhere in hierarchy, create it in current `Blackboard`
-		self.database.write().create(key, value)?;
-		Ok(None)
 	}
 }
 

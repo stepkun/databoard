@@ -21,6 +21,13 @@ pub enum Error {
 		/// The already existing remapping.
 		remapped: ConstString,
 	},
+	/// Remapping of `key` is a value assignment.
+	Assignment {
+		/// Key to be remapped.
+		key: ConstString,
+		/// Value to be asssigned.
+		value: ConstString,
+	},
 	/// Entry with `key` not stored.
 	NotFound {
 		/// Key of the wanted entry.
@@ -56,6 +63,7 @@ impl core::fmt::Debug for Error {
 			Self::AlreadyRemapped { key, remapped } => {
 				write!(f, "AlreadyRemapped(key: {key}, remapped: {remapped}")
 			}
+			Self::Assignment { key, value } => write!(f, "Assignment(key: {key}, value: {value}"),
 			Self::NotFound { key } => write!(f, "NotFound(key: {key}"),
 			Self::WrongType { key } => write!(f, "WrongType(key: {key}"),
 			Self::Unexpected(file, line) => write!(f, "Unexpected(file: {file}, line: {line}"),
@@ -70,6 +78,7 @@ impl core::fmt::Display for Error {
 			Self::AlreadyRemapped { key, remapped } => {
 				write!(f, "key {key} is already remapped as {remapped}")
 			}
+			Self::Assignment { key, value } => write!(f, "remapping of {key} containsan assignment of {value}"),
 			Self::NotFound { key } => write!(f, "an entry for the key {key} is not existing"),
 			Self::WrongType { key } => write!(f, "the entry for the key {key} is stored with a different type"),
 			Self::Unexpected(file, line) => write!(f, "an unexpected error occured in {file} at line {line}"),
