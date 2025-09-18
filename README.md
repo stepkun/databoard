@@ -55,7 +55,7 @@ let value2: i32 = level2.get("other_test").unwrap();
 
 ## License
 
-Licensed with the fair use "NGMC" license, see [license file](https://github.com/stepkun/behaviortree/blob/main/LICENSE)
+Licensed with the fair use "NGMC" license, see [license file](https://github.com/stepkun/databoard/blob/main/LICENSE)
 
 ## Contribution
 

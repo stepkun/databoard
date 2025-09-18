@@ -86,9 +86,9 @@ impl Databoard {
 	#[must_use]
 	pub fn contains_key(&self, key: &str) -> bool {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().contains_key(&stripped_key),
+			Ok(stripped_key) => self.root().contains_key(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().contains_key(&local_key),
+				Ok(local_key) => self.database.read().contains_key(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -96,7 +96,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.contains_key(&board_pointer)
+									parent.contains_key(board_pointer)
 								} else {
 									false
 								}
@@ -136,9 +136,9 @@ impl Databoard {
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn contains<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<bool> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().contains::<T>(&stripped_key),
+			Ok(stripped_key) => self.root().contains::<T>(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().contains::<T>(&local_key),
+				Ok(local_key) => self.database.read().contains::<T>(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -146,7 +146,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.contains::<T>(&board_pointer)
+									parent.contains::<T>(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -178,9 +178,9 @@ impl Databoard {
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn delete<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().delete(&stripped_key),
+			Ok(stripped_key) => self.root().delete(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.write().delete(&local_key),
+				Ok(local_key) => self.database.write().delete(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -188,7 +188,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.delete(&board_pointer)
+									parent.delete(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -216,9 +216,9 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	pub fn entry(&self, key: &str) -> Result<EntryPtr> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().entry(&stripped_key),
+			Ok(stripped_key) => self.root().entry(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().entry(&local_key),
+				Ok(local_key) => self.database.read().entry(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -226,7 +226,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.entry(&board_pointer)
+									parent.entry(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -255,9 +255,9 @@ impl Databoard {
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().get(&stripped_key),
+			Ok(stripped_key) => self.root().get(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().read(&local_key),
+				Ok(local_key) => self.database.read().read(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -265,7 +265,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.get(&board_pointer)
+									parent.get(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -299,9 +299,9 @@ impl Databoard {
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardWrite<T>> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().get_mut_ref(&stripped_key),
+			Ok(stripped_key) => self.root().get_mut_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().get_mut_ref(&local_key),
+				Ok(local_key) => self.database.read().get_mut_ref(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -309,7 +309,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.get_mut_ref(&board_pointer)
+									parent.get_mut_ref(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -347,9 +347,9 @@ impl Databoard {
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardRead<T>> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().get_ref(&stripped_key),
+			Ok(stripped_key) => self.root().get_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().get_ref(&local_key),
+				Ok(local_key) => self.database.read().get_ref(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -357,7 +357,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.get_ref(&board_pointer)
+									parent.get_ref(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -419,9 +419,9 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	pub fn sequence_id(&self, key: &str) -> Result<usize> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().sequence_id(&stripped_key),
+			Ok(stripped_key) => self.root().sequence_id(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
-				Ok(local_key) => self.database.read().sequence_id(&local_key),
+				Ok(local_key) => self.database.read().sequence_id(local_key),
 				Err(original_key) => {
 					let (parent_key, has_remapping) = self.remapping_info(original_key);
 					if has_remapping {
@@ -429,7 +429,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.sequence_id(&board_pointer)
+									parent.sequence_id(board_pointer)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}
@@ -457,10 +457,10 @@ impl Databoard {
 	/// - [`Error::WrongType`] if `key` already exists with a different type
 	pub fn set<T: Any + Clone + Send + Sync>(&self, key: &str, value: T) -> Result<Option<T>> {
 		match check_top_level_key(key) {
-			Ok(stripped_key) => self.root().set(&stripped_key, value),
+			Ok(stripped_key) => self.root().set(stripped_key, value),
 			Err(original_key) => match check_local_key(original_key) {
 				Ok(local_key) => {
-					let old = self.database.read().update(&local_key, value)?;
+					let old = self.database.read().update(local_key, value)?;
 					Ok(Some(old))
 				}
 				Err(original_key) => {
@@ -470,7 +470,7 @@ impl Databoard {
 						match check_board_pointer(&parent_key) {
 							Ok(board_pointer) => {
 								if let Some(parent) = &self.parent {
-									parent.set(&board_pointer, value)
+									parent.set(board_pointer, value)
 								} else {
 									Err(Error::Unexpected(file!().into(), line!()))
 								}

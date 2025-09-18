@@ -7,7 +7,13 @@ use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
 // region:		--- helpers
-/// Checks whether the given key is a constant assignment.
+/// Returns `true` if a key is a valid databoard key, otherwise `false`
+#[must_use]
+fn is_valid_db_key(key: &str) -> bool {
+	!key.contains('"') && !key.contains('\'') && !key.contains(':') && !key.contains('{') && !key.contains('}')
+}
+
+/// Returns `true` if a key is not a board pointer but a constant assignment , otherwise `false`
 #[must_use]
 pub fn is_const_assignment(key: &str) -> bool {
 	!key.starts_with('{') && !key.ends_with('}') || key.contains('"') || key.contains(':') || key.contains('\'')
@@ -16,118 +22,106 @@ pub fn is_const_assignment(key: &str) -> bool {
 /// Checks whether the given key is a pointer into a [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_board_pointer(key: &str) -> bool {
-	key.starts_with('{') && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
+	key.starts_with('{') && key.ends_with('}') && is_valid_db_key(&key[1..key.len() - 1])
 }
 
 /// Returns Some(literal) of the [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 #[must_use]
-pub fn strip_board_pointer(key: &str) -> Option<ConstString> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return None;
+pub fn strip_board_pointer(key: &str) -> Option<&str> {
+	if is_board_pointer(key) {
+		Some(&key[1..key.len() - 1])
+	} else {
+		None
 	}
-	Some(key.strip_prefix('{')?.strip_suffix('}')?.into())
 }
 
 /// Returns the literal of the [`Databoard`](crate::databoard) pointer if it is one.
 /// # Errors
 /// - if is not a [`Databoard`](crate::databoard) pointer, the error contains the unchanged key.
-pub fn check_board_pointer(key: &str) -> core::result::Result<ConstString, &str> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return Err(key);
+pub fn check_board_pointer(key: &str) -> core::result::Result<&str, &str> {
+	if is_board_pointer(key) {
+		Ok(&key[1..key.len() - 1])
+	} else {
+		Err(key)
 	}
-	key.strip_prefix('{').map_or_else(
-		|| Err(key),
-		|v| {
-			v.strip_suffix('}')
-				.map_or_else(|| Err(key), |v| Ok(v.into()))
-		},
-	)
 }
 
 /// Returns the literal of the current/local [`Databoard`](crate::databoard) key if it is one.
 /// # Errors
 /// - if is not a current/local [`Databoard`](crate::databoard) `key`, the error contains the unchanged `key`.
-pub fn check_local_key(key: &str) -> core::result::Result<ConstString, &str> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return Err(key);
+pub fn check_local_key(key: &str) -> core::result::Result<&str, &str> {
+	if key.starts_with('_') && is_valid_db_key(&key[1..]) {
+		Ok(&key[1..])
+	} else {
+		Err(key)
 	}
-	key.strip_prefix("_")
-		.map_or_else(|| Err(key), |v| Ok(v.into()))
 }
 
 /// Checks whether the given key is a pointer into current/local [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_local_pointer(key: &str) -> bool {
-	key.starts_with("{_") && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
+	key.starts_with("{_") && key.ends_with('}') && is_valid_db_key(&key[2..key.len() - 1])
 }
 
 /// Returns Some(literal) of the current/local [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 /// The leading `_` is removed from the literal.
 #[must_use]
-pub fn strip_local_pointer(key: &str) -> Option<ConstString> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return None;
+pub fn strip_local_pointer(key: &str) -> Option<&str> {
+	if is_local_pointer(key) {
+		Some(&key[2..key.len() - 1])
+	} else {
+		None
 	}
-	Some(key.strip_prefix("{_")?.strip_suffix('}')?.into())
 }
 
 /// Returns the literal of the current/local [`Databoard`](crate::databoard) pointer if it is one.
 /// # Errors
 /// - if is not a current/local [`Databoard`](crate::databoard) pointer, the error contains the unchanged key.
-pub fn check_local_pointer(key: &str) -> core::result::Result<ConstString, &str> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return Err(key);
+pub fn check_local_pointer(key: &str) -> core::result::Result<&str, &str> {
+	if is_local_pointer(key) {
+		Ok(&key[2..key.len() - 1])
+	} else {
+		Err(key)
 	}
-	key.strip_prefix("{_").map_or_else(
-		|| Err(key),
-		|v| {
-			v.strip_suffix('}')
-				.map_or_else(|| Err(key), |v| Ok(v.into()))
-		},
-	)
 }
 
 /// Returns the literal of the top level [`Databoard`](crate::databoard) key if it is one.
 /// # Errors
 /// - if is not a top level [`Databoard`](crate::databoard) `key`, the error contains the unchanged `key`.
-pub fn check_top_level_key(key: &str) -> core::result::Result<ConstString, &str> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return Err(key);
+pub fn check_top_level_key(key: &str) -> core::result::Result<&str, &str> {
+	if key.starts_with('@') && is_valid_db_key(&key[1..]) {
+		Ok(&key[1..])
+	} else {
+		Err(key)
 	}
-	key.strip_prefix("@")
-		.map_or_else(|| Err(key), |v| Ok(v.into()))
 }
 
 /// Checks whether the given key is a pointer into top level [`Databoard`](crate::databoard).
 #[must_use]
 pub fn is_top_level_pointer(key: &str) -> bool {
-	key.starts_with("{@") && key.ends_with('}') && !(key.contains('"') || key.contains(':') || key.contains('\''))
+	key.starts_with("{@") && key.ends_with('}') && is_valid_db_key(&key[2..key.len() - 1])
 }
 
 /// Returns Some(literal) of the top level [`Databoard`](crate::databoard) pointer if it is one, otherwise `None`.
 /// The leading `@` is removed from the literal.
 #[must_use]
-pub fn strip_top_level_pointer(key: &str) -> Option<ConstString> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return None;
+pub fn strip_top_level_pointer(key: &str) -> Option<&str> {
+	if is_top_level_pointer(key) {
+		Some(&key[2..key.len() - 1])
+	} else {
+		None
 	}
-	Some(key.strip_prefix("{@")?.strip_suffix('}')?.into())
 }
 
 /// Returns the literal of the top level [`Databoard`](crate::databoard) pointer if it is one.
 /// # Errors
 /// - if is not a top level [`Databoard`](crate::databoard) pointer, the error contains the unchanged pointer.
-pub fn check_top_level_pointer(key: &str) -> core::result::Result<ConstString, &str> {
-	if key.contains('"') || key.contains(':') || key.contains('\'') {
-		return Err(key);
+pub fn check_top_level_pointer(key: &str) -> core::result::Result<&str, &str> {
+	if is_top_level_pointer(key) {
+		Ok(&key[2..key.len() - 1])
+	} else {
+		Err(key)
 	}
-	key.strip_prefix("{@").map_or_else(
-		|| Err(key),
-		|v| {
-			v.strip_suffix('}')
-				.map_or_else(|| Err(key), |v| Ok(v.into()))
-		},
-	)
 }
 // endregion:	--- helpers
 

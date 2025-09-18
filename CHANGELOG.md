@@ -16,6 +16,9 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
-## [0.1.0] - 2025-??-??
+## [0.1.0] - 2025-09-18
 
-Version 0.1.0 is ...
+Version 0.1.0 is a fundamentally working implementation of the hierarchical databoard.
+To be changed in future versions:
+- The need of `T` to implement `Clone`.
+- The implementation of `Remappings`, which is very simple right now.
