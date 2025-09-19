@@ -119,7 +119,7 @@ impl Databoard {
 	/// Returns  a result of `true` if a certain `key` is available, otherwise a result of `false`.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn contains<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<bool> {
+	pub fn contains<T: Any + Send + Sync>(&self, key: &str) -> Result<bool> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().contains::<T>(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -157,11 +157,11 @@ impl Databoard {
 		std::println!("not yet implemented");
 	}
 
-	/// Returns a value of type `T` stored under `key` and deletes it from database.
+	/// Returnsthe value of type `T` stored under `key` and deletes it from database.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn delete<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
+	pub fn delete<T: Any + Send + Sync>(&self, key: &str) -> Result<T> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().delete(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -282,7 +282,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+	pub fn get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().get_mut_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -330,7 +330,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+	pub fn get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().get_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -371,16 +371,16 @@ impl Databoard {
 		}
 	}
 
-	/// Returns the cloned remappings, if ther are any, otherwise `None`.
-	pub fn remappings(&self) -> Option<Remappings> {
+	/// Returns a reference to the remappings, if there are any, otherwise `None`.
+	pub fn remappings(&self) -> Option<&Remappings> {
 		if self.remappings.is_empty() {
 			None
 		} else {
-			Some(self.remappings.clone())
+			Some(&self.remappings)
 		}
 	}
 
-	/// Returns to the root [`Databoard`] of the hierarchy.
+	/// Returns a reference to the root [`Databoard`] of the hierarchy.
 	fn root(&self) -> &Self {
 		self.parent
 			.as_ref()
@@ -440,7 +440,7 @@ impl Databoard {
 	/// Stores a value of type `T` under `key` and returns an eventually existing value of type `T`.
 	/// # Errors
 	/// - [`Error::WrongType`] if `key` already exists with a different type
-	pub fn set<T: Any + Clone + Send + Sync>(&self, key: &str, value: T) -> Result<Option<T>> {
+	pub fn set<T: Any + Send + Sync>(&self, key: &str, value: T) -> Result<Option<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().set(stripped_key, value),
 			Err(original_key) => match check_local_key(original_key) {
@@ -496,7 +496,7 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	/// - [`Error::IsLocked`] if the entry is locked by someone else
-	pub fn try_get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+	pub fn try_get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().try_get_mut_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -545,7 +545,7 @@ impl Databoard {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	/// - [`Error::IsLocked`] if the entry is locked by someone else
-	pub fn try_get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+	pub fn try_get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().try_get_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {

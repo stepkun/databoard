@@ -348,9 +348,11 @@ fn referencing() {
 	*entry -= 2;
 	assert_eq!(*entry, 24);
 
-	// concurrent read  or write should not be possible
+	// concurrent read or write should not be possible
 	assert!(databoard.try_get_ref::<i32>("test").is_err());
 	assert!(databoard.try_get_mut_ref::<i32>("test").is_err());
+	// a delete will block
+	// databoard.delete::<i32>("test");
 
 	drop(entry);
 	// multiple changes during holding a reference are counted as 1 change

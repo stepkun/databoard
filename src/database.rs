@@ -33,7 +33,7 @@ impl Database {
 	/// Returns  a result of `true` if a certain `key` of type `T` is available, otherwise a result of `false`.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn contains<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<bool> {
+	pub fn contains<T: Any + Send + Sync>(&self, key: &str) -> Result<bool> {
 		if let Some(entry) = self.storage.get(key) {
 			let en = &*entry.read().data;
 			if en.downcast_ref::<T>().is_none() {
@@ -47,7 +47,7 @@ impl Database {
 	/// Creates a value of type `T` under `key`.
 	/// # Errors
 	/// - [`Error::AlreadyExists`] if `key` already exists
-	pub fn create<T: Any + Clone + Send + Sync>(&mut self, key: impl Into<ConstString>, value: T) -> Result<()> {
+	pub fn create<T: Any + Send + Sync>(&mut self, key: impl Into<ConstString>, value: T) -> Result<()> {
 		let key = key.into();
 		if self.storage.contains_key(&key) {
 			return Err(Error::AlreadyExists { key });
@@ -60,26 +60,28 @@ impl Database {
 		Ok(())
 	}
 
-	/// Returns a value of type `T` stored under `key` and deletes it from storage.
+	/// Returns the value of type `T` stored under `key` and deletes it from storage.
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn delete<T: Any + Clone + Send + Sync>(&mut self, key: &str) -> Result<T> {
+	pub fn delete<T: Any + Send + Sync>(&mut self, key: &str) -> Result<T> {
 		// check type
 		if let Some(entry) = self.storage.get(key) {
 			let en = &*entry.read().data;
-			if en.downcast_ref::<T>().is_none() {
+			if entry.read().data.downcast_ref::<T>().is_none() {
 				return Err(Error::WrongType { key: key.into() });
 			}
 		} else {
 			return Err(Error::NotFound { key: key.into() });
 		}
-		if let Some(old) = self.storage.remove(key) {
-			let en = &*old.read().data;
-			let t = en.downcast_ref::<T>();
-			return t
-				.cloned()
-				.map_or_else(|| Err(Error::WrongType { key: key.into() }), |v| Ok(v));
+		if let Some(old) = self.storage.remove(key)
+			&& let Some(entry) = Arc::into_inner(old)
+		{
+			let entry_data = entry.into_inner(); // will block, if the RwLock is locked
+			match entry_data.data.downcast::<T>() {
+				Ok(t) => return Ok(*t),
+				Err(_) => return Err(Error::WrongType { key: key.into() }),
+			}
 		}
 
 		// We should never reach this!
@@ -106,7 +108,7 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+	pub fn get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryWriteGuard::new(key, entry);
 		}
@@ -121,7 +123,7 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+	pub fn get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryReadGuard::new(key, entry.clone());
 		}
@@ -167,7 +169,7 @@ impl Database {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	/// - [`Error::IsLocked`] if the entry is locked by someone else
-	pub fn try_get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+	pub fn try_get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryWriteGuard::try_new(key, entry);
 		}
@@ -183,7 +185,7 @@ impl Database {
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	/// - [`Error::IsLocked`] if the entry is locked by someone else
-	pub fn try_get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+	pub fn try_get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryReadGuard::try_new(key, entry);
 		}
@@ -195,24 +197,23 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn update<T: Any + Clone + Send + Sync>(&self, key: &str, value: T) -> Result<T> {
+	pub fn update<T: Any + Send + Sync>(&self, key: &str, value: T) -> Result<T> {
+		let mut value = value;
 		self.storage.get(key).map_or_else(
 			|| Err(Error::NotFound { key: key.into() }),
-			|mut entry| {
+			|entry| {
 				let en = &mut *entry.write();
-				let t = en.data.downcast_ref::<T>();
-				t.cloned().map_or_else(
-					|| Err(Error::WrongType { key: key.into() }),
-					|v| {
-						en.data = Box::new(value);
-						if en.sequence_id < usize::MAX {
-							en.sequence_id += 1;
-						} else {
-							en.sequence_id = usize::MIN + 1;
-						}
-						Ok(v)
-					},
-				)
+				if let Some(t) = en.data.downcast_mut::<T>() {
+					core::mem::swap(t, &mut value);
+					if en.sequence_id < usize::MAX {
+						en.sequence_id += 1;
+					} else {
+						en.sequence_id = usize::MIN + 1;
+					}
+					Ok(value)
+				} else {
+					Err(Error::WrongType { key: key.into() })
+				}
 			},
 		)
 	}

@@ -26,6 +26,7 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 ### Fixed
 
 ### Removed
+- the need for `T`to implement `Clone` for all methods but `get()`
 
 ## [0.1.0] - 2025-09-18
 

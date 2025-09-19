@@ -38,7 +38,7 @@ impl DerefMut for EntryData {
 
 impl EntryData {
 	/// Creates a new `EntryData`.
-	pub fn new<T: Any + Clone + Send + Sync>(value: T) -> Self {
+	pub fn new<T: Any + Send + Sync>(value: T) -> Self {
 		Self {
 			data: Box::new(value),
 			sequence_id: usize::MIN + 1,
@@ -62,12 +62,12 @@ impl EntryData {
 /// Until this value is dropped, a read lock is held on the entry.
 ///
 /// Implements [`Deref`], providing read access to the locked `T`.
-pub struct EntryReadGuard<T: Any + Clone + Send + Sync> {
+pub struct EntryReadGuard<T: Any + Send + Sync> {
 	entry: EntryPtr,
 	ptr_t: *const T,
 }
 
-impl<T: Any + Clone + Send + Sync> Deref for EntryReadGuard<T> {
+impl<T: Any + Send + Sync> Deref for EntryReadGuard<T> {
 	type Target = T;
 
 	#[allow(unsafe_code)]
@@ -76,7 +76,7 @@ impl<T: Any + Clone + Send + Sync> Deref for EntryReadGuard<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> Drop for EntryReadGuard<T> {
+impl<T: Any + Send + Sync> Drop for EntryReadGuard<T> {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		// manually decrementing lock because entry is permanently locked in new()
@@ -86,7 +86,7 @@ impl<T: Any + Clone + Send + Sync> Drop for EntryReadGuard<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> EntryReadGuard<T> {
+impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// Returns a read guard to a &T.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
@@ -147,14 +147,14 @@ impl<T: Any + Clone + Send + Sync> EntryReadGuard<T> {
 /// Until this value is dropped, a write lock is held on the entry.
 ///
 /// Implements [`Deref`] & [`DerefMut`], providing access to the locked `T`.
-pub struct EntryWriteGuard<T: Any + Clone + Send + Sync> {
+pub struct EntryWriteGuard<T: Any + Send + Sync> {
 	entry: EntryPtr,
 	ptr_t: *mut T,
 	ptr_seq_id: *mut usize,
 	modified: bool,
 }
 
-impl<T: Any + Clone + Send + Sync> Deref for EntryWriteGuard<T> {
+impl<T: Any + Send + Sync> Deref for EntryWriteGuard<T> {
 	type Target = T;
 
 	#[allow(unsafe_code)]
@@ -163,7 +163,7 @@ impl<T: Any + Clone + Send + Sync> Deref for EntryWriteGuard<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> DerefMut for EntryWriteGuard<T> {
+impl<T: Any + Send + Sync> DerefMut for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.modified = true;
@@ -171,7 +171,7 @@ impl<T: Any + Clone + Send + Sync> DerefMut for EntryWriteGuard<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> Drop for EntryWriteGuard<T> {
+impl<T: Any + Send + Sync> Drop for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		// manually removing lock because entry is permanently locked in new()
@@ -184,7 +184,7 @@ impl<T: Any + Clone + Send + Sync> Drop for EntryWriteGuard<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> EntryWriteGuard<T> {
+impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// Returns a write guard to a &mut T.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
