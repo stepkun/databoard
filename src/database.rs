@@ -5,7 +5,7 @@
 
 use crate::{
 	ConstString, Error,
-	entry::{EntryData, EntryGuardRead, EntryGuardWrite, EntryPtr},
+	entry::{EntryData, EntryPtr, EntryReadGuard, EntryWriteGuard},
 	error::Result,
 	remappings::Remappings,
 };
@@ -106,17 +106,9 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardWrite<T>> {
-		// @TODO: This is a non-optimal implementation
+	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
-			// ensure that it is the right type before creating reference
-			{
-				let en = &*entry.read().data;
-				if en.downcast_ref::<T>().is_none() {
-					return Err(Error::WrongType { key: key.into() });
-				}
-			}
-			return Ok(EntryGuardWrite::new(entry.clone()));
+			return EntryWriteGuard::new(key, entry);
 		}
 
 		Err(Error::NotFound { key: key.into() })
@@ -129,17 +121,9 @@ impl Database {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardRead<T>> {
-		// @TODO: This is a non-optimal implementation
+	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
-			// ensure that it is the right type before creating reference
-			{
-				let en = &*entry.read().data;
-				if en.downcast_ref::<T>().is_none() {
-					return Err(Error::WrongType { key: key.into() });
-				}
-			}
-			return Ok(EntryGuardRead::new(entry.clone()));
+			return EntryReadGuard::new(key, entry.clone());
 		}
 
 		Err(Error::NotFound { key: key.into() })
@@ -171,6 +155,40 @@ impl Database {
 			|| Err(Error::NotFound { key: key.into() }),
 			|entry| Ok(entry.read().sequence_id),
 		)
+	}
+
+	/// Returns a read/write guard to the `T` of the `entry` stored under `key`.
+	/// The entry is locked for read & write while this reference is held.
+	/// Multiple changes during holding the reference are counted as a single change,
+	/// so `sequence_id()`will only increase by 1.
+	///
+	/// You need to drop the received [`EntryGuardWrite`] before using `delete`, `read`, `update` or `sequence_id`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	pub fn try_get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+		if let Some(entry) = self.storage.get(key) {
+			return EntryWriteGuard::try_new(key, entry);
+		}
+
+		Err(Error::NotFound { key: key.into() })
+	}
+
+	/// Returns a read guard to the `T` of the `entry` stored under `key`.
+	/// The entry is locked for write while this reference is held.
+	///
+	/// You need to drop the received [`EntryGuardRead`] before using `delete`, or `update`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	pub fn try_get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+		if let Some(entry) = self.storage.get(key) {
+			return EntryReadGuard::try_new(key, entry);
+		}
+
+		Err(Error::NotFound { key: key.into() })
 	}
 
 	/// Updates a value of type `T` stored under `key` and returns the old value.

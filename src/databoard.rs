@@ -9,7 +9,7 @@ extern crate std;
 use crate::{
 	ConstString, Error, check_board_pointer, check_local_pointer, check_top_level_key, check_top_level_pointer,
 	database::Database,
-	entry::{EntryData, EntryGuardRead, EntryGuardWrite, EntryPtr},
+	entry::{EntryData, EntryPtr, EntryReadGuard, EntryWriteGuard},
 	error::Result,
 	is_const_assignment,
 	remappings::{Remappings, check_local_key},
@@ -111,21 +111,6 @@ impl Databoard {
 						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
 						self.database.read().contains_key(original_key)
 					}
-
-					// 	// look in database
-					// 	if self.database.read().contains_key(original_key) {
-					// 		return true;
-					// 	}
-
-					// 	// Try to find in parent hierarchy.
-					// 	let (parent_key, has_remapping) = self.remapping_info_old(original_key);
-					// 	if let Some(parent) = &self.parent
-					// 		&& (has_remapping || (self.autoremap && parent.contains_key(&parent_key)))
-					// 	{
-					// 		return parent.contains_key(&parent_key);
-					// 	}
-
-					// 	false
 				}
 			},
 		}
@@ -297,7 +282,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardWrite<T>> {
+	pub fn get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().get_mut_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -345,7 +330,7 @@ impl Databoard {
 	/// # Errors
 	/// - [`Error::NotFound`] if `key` is not contained
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryGuardRead<T>> {
+	pub fn get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		match check_top_level_key(key) {
 			Ok(stripped_key) => self.root().get_ref(stripped_key),
 			Err(original_key) => match check_local_key(original_key) {
@@ -494,6 +479,106 @@ impl Databoard {
 								.write()
 								.create(original_key, value)?;
 							Ok(None)
+						}
+					}
+				}
+			},
+		}
+	}
+
+	/// Returns a read/write guard to the `T` of the `entry` stored under `key`.
+	/// The entry is locked for read & write while this reference is held.
+	/// Multiple changes during holding the reference are counted as a single change,
+	/// so `sequence_id()`will only increase by 1.
+	///
+	/// You need to drop the received [`EntryGuardWrite`] before using `delete`, `get`, `set` or `sequence_id`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	pub fn try_get_mut_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().try_get_mut_ref(stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().try_get_mut_ref(local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.try_get_mut_ref(board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.try_get_mut_ref(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						if self.database.read().contains_key(original_key) {
+							self.database.read().try_get_mut_ref(original_key)
+						} else {
+							Err(Error::NotFound {
+								key: original_key.into(),
+							})
+						}
+					}
+				}
+			},
+		}
+	}
+
+	/// Returns a read guard to the `T` of the `entry` stored under `key`.
+	/// The entry is locked for write while this reference is held.
+	///
+	/// You need to drop the received [`EntryGuardRead`] before using `delete` or `set`.
+	/// # Errors
+	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	pub fn try_get_ref<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
+		match check_top_level_key(key) {
+			Ok(stripped_key) => self.root().try_get_ref(stripped_key),
+			Err(original_key) => match check_local_key(original_key) {
+				Ok(local_key) => self.database.read().try_get_ref(local_key),
+				Err(original_key) => {
+					let (parent_key, has_remapping) = self.remapping_info(original_key);
+					if has_remapping {
+						#[allow(clippy::option_if_let_else)]
+						match check_board_pointer(&parent_key) {
+							Ok(board_pointer) => {
+								if let Some(parent) = &self.parent {
+									parent.try_get_ref(board_pointer)
+								} else {
+									Err(Error::Unexpected(file!().into(), line!()))
+								}
+							}
+							Err(_) => Err(Error::Assignment {
+								key: original_key.into(),
+								value: parent_key,
+							}),
+						}
+					} else if self.autoremap
+						&& let Some(parent) = &self.parent
+					{
+						parent.get_ref(&parent_key)
+					} else {
+						// If it is not remapped anywhere in hierarchy, handle it in current `Blackboard`
+						if self.database.read().contains_key(original_key) {
+							self.database.read().try_get_ref(original_key)
+						} else {
+							Err(Error::NotFound {
+								key: original_key.into(),
+							})
 						}
 					}
 				}

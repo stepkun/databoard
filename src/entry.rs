@@ -3,7 +3,7 @@
 
 #![allow(dead_code, unused)]
 
-use crate::{error::Result, remappings::Remappings};
+use crate::{Error, error::Result, remappings::Remappings};
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, fmt::Debug, string::String, sync::Arc};
 use core::{
 	any::Any,
@@ -12,6 +12,10 @@ use core::{
 };
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+/// Convenience type for the Arc around the [`EntryData`]
+pub type EntryPtr = Arc<RwLock<EntryData>>;
+
+// region:		--- EntryData
 /// The data stored in a [`Databoard`](crate::databoard::Databoard) entry.
 pub struct EntryData {
 	pub(crate) sequence_id: usize,
@@ -51,22 +55,19 @@ impl EntryData {
 		self.sequence_id
 	}
 }
+// endregion:	--- EntryData
 
-/// Convenience type for the Arc around the [`EntryData`]
-pub type EntryPtr = Arc<RwLock<EntryData>>;
-
-/// Write-Locked entry guard.
-/// Until this value is dropped, a write lock is held on the entry.
+// region:		--- EntryReadGuard
+/// Read-Locked entry guard.
+/// Until this value is dropped, a read lock is held on the entry.
 ///
-/// Implements [`Deref`] & [`DerefMut`], providing access to the locked `T`.
-pub struct EntryGuardWrite<T: Any + Clone + Send + Sync> {
+/// Implements [`Deref`], providing read access to the locked `T`.
+pub struct EntryReadGuard<T: Any + Clone + Send + Sync> {
 	entry: EntryPtr,
-	ptr_t: *mut T,
-	ptr_seq_id: *mut usize,
-	modified: bool,
+	ptr_t: *const T,
 }
 
-impl<T: Any + Clone + Send + Sync> Deref for EntryGuardWrite<T> {
+impl<T: Any + Clone + Send + Sync> Deref for EntryReadGuard<T> {
 	type Target = T;
 
 	#[allow(unsafe_code)]
@@ -75,7 +76,94 @@ impl<T: Any + Clone + Send + Sync> Deref for EntryGuardWrite<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> DerefMut for EntryGuardWrite<T> {
+impl<T: Any + Clone + Send + Sync> Drop for EntryReadGuard<T> {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		// manually decrementing lock because entry is permanently locked in new()
+		unsafe {
+			self.entry.force_read_decrement();
+		}
+	}
+}
+
+impl<T: Any + Clone + Send + Sync> EntryReadGuard<T> {
+	/// Returns a read guard to a &T.
+	/// # Errors
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	#[allow(unsafe_code)]
+	#[allow(clippy::coerce_container_to_any)]
+	#[allow(clippy::expect_used)]
+	pub fn new(key: &str, entry: EntryPtr) -> Result<Self> {
+		// we know this pointer is valid since the guard owns the EntryPtr
+		let ptr_t = {
+			let mut guard = entry.read();
+			// leak returns &'rwlock mut EntryData but locks RwRLock forewer
+			let x = &RwLockReadGuard::leak(guard).data;
+			if let Some(t) = x.downcast_ref::<T>() {
+				let ptr_t: *const T = unsafe { t };
+				ptr_t
+			} else {
+				return Err(Error::WrongType { key: key.into() });
+			}
+		};
+
+		Ok(Self { entry, ptr_t })
+	}
+
+	/// Returns a read guard to a &mut T.
+	/// # Errors
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	#[allow(unsafe_code)]
+	#[allow(clippy::coerce_container_to_any)]
+	#[allow(clippy::expect_used)]
+	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
+		// we know this pointer is valid since the guard owns the EntryPtr
+		let ptr_t = {
+			if let Some(mut guard) = entry.try_read() {
+				// leak returns &'rlock EntryData but locks RwLock forewer
+				let x = &RwLockReadGuard::leak(guard).data;
+				if let Some(t) = x.downcast_ref::<T>() {
+					let ptr_t: *const T = unsafe { t };
+					ptr_t
+				} else {
+					return Err(Error::WrongType { key: key.into() });
+				}
+			} else {
+				return Err(Error::IsLocked { key: key.into() });
+			}
+		};
+
+		Ok(Self {
+			entry: entry.clone(),
+			ptr_t,
+		})
+	}
+}
+// endregion:	--- EntryReadGuard
+
+// region:		--- EntryWriteGuard
+/// Write-Locked entry guard.
+/// Until this value is dropped, a write lock is held on the entry.
+///
+/// Implements [`Deref`] & [`DerefMut`], providing access to the locked `T`.
+pub struct EntryWriteGuard<T: Any + Clone + Send + Sync> {
+	entry: EntryPtr,
+	ptr_t: *mut T,
+	ptr_seq_id: *mut usize,
+	modified: bool,
+}
+
+impl<T: Any + Clone + Send + Sync> Deref for EntryWriteGuard<T> {
+	type Target = T;
+
+	#[allow(unsafe_code)]
+	fn deref(&self) -> &Self::Target {
+		unsafe { &*self.ptr_t }
+	}
+}
+
+impl<T: Any + Clone + Send + Sync> DerefMut for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.modified = true;
@@ -83,7 +171,7 @@ impl<T: Any + Clone + Send + Sync> DerefMut for EntryGuardWrite<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> Drop for EntryGuardWrite<T> {
+impl<T: Any + Clone + Send + Sync> Drop for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		// manually removing lock because entry is permanently locked in new()
@@ -96,87 +184,70 @@ impl<T: Any + Clone + Send + Sync> Drop for EntryGuardWrite<T> {
 	}
 }
 
-impl<T: Any + Clone + Send + Sync> EntryGuardWrite<T> {
+impl<T: Any + Clone + Send + Sync> EntryWriteGuard<T> {
+	/// Returns a write guard to a &mut T.
+	/// # Errors
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
 	#[allow(clippy::expect_used)]
-	pub fn new(entry: EntryPtr) -> Self {
+	pub fn new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
 			let mut guard = entry.write();
 			let ptr_seq_id: *mut usize = unsafe { &raw mut guard.sequence_id };
 			// leak returns &'rwlock mut EntryData but locks RwLock forewer
 			let x = &mut RwLockWriteGuard::leak(guard).data;
-			// let x = &mut guard.data;
-			// let x = unsafe { &mut **entry.as_mut_ptr() };
-			let t = x
-				.downcast_mut::<T>()
-				.expect("downcast should be possible");
-
-			let ptr_t: *mut T = unsafe { t };
-			(ptr_t, ptr_seq_id)
+			if let Some(t) = x.downcast_mut::<T>() {
+				let ptr_t: *mut T = unsafe { t };
+				(ptr_t, ptr_seq_id)
+			} else {
+				return Err(Error::WrongType { key: key.into() });
+			}
 		};
 
-		Self {
-			entry,
+		Ok(Self {
+			entry: entry.clone(),
 			ptr_t,
 			ptr_seq_id,
 			modified: false,
-		}
+		})
 	}
-}
 
-/// Read-Locked entry guard.
-/// Until this value is dropped, a read lock is held on the entry.
-///
-/// Implements [`Deref`], providing read access to the locked `T`.
-pub struct EntryGuardRead<T: Any + Clone + Send + Sync> {
-	entry: EntryPtr,
-	ptr_t: *const T,
-}
-
-impl<T: Any + Clone + Send + Sync> Deref for EntryGuardRead<T> {
-	type Target = T;
-
-	#[allow(unsafe_code)]
-	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.ptr_t }
-	}
-}
-
-impl<T: Any + Clone + Send + Sync> Drop for EntryGuardRead<T> {
-	#[allow(unsafe_code)]
-	fn drop(&mut self) {
-		// manually decrementing lock because entry is permanently locked in new()
-		unsafe {
-			self.entry.force_read_decrement();
-		}
-	}
-}
-
-impl<T: Any + Clone + Send + Sync> EntryGuardRead<T> {
+	/// Returns a write guard to a &mut T.
+	/// # Errors
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::IsLocked`] if the entry is locked by someone else
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
 	#[allow(clippy::expect_used)]
-	pub fn new(entry: EntryPtr) -> Self {
+	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
-		let ptr_t = {
-			let mut guard = entry.read();
-			// leak returns &'rwlock mut EntryData but locks RwLock forewer
-			let x = &RwLockReadGuard::leak(guard).data;
-			// let x = &mut guard.data;
-			// let x = unsafe { &mut **entry.as_mut_ptr() };
-			let t = x
-				.downcast_ref::<T>()
-				.expect("downcast should be possible");
-
-			let ptr_t: *const T = unsafe { t };
-			ptr_t
+		let (ptr_t, ptr_seq_id) = {
+			if let Some(mut guard) = entry.try_write() {
+				let ptr_seq_id: *mut usize = unsafe { &raw mut guard.sequence_id };
+				// leak returns &'rwlock mut EntryData but locks RwLock forewer
+				let x = &mut RwLockWriteGuard::leak(guard).data;
+				if let Some(t) = x.downcast_mut::<T>() {
+					let ptr_t: *mut T = unsafe { t };
+					(ptr_t, ptr_seq_id)
+				} else {
+					return Err(Error::WrongType { key: key.into() });
+				}
+			} else {
+				return Err(Error::IsLocked { key: key.into() });
+			}
 		};
 
-		Self { entry, ptr_t }
+		Ok(Self {
+			entry: entry.clone(),
+			ptr_t,
+			ptr_seq_id,
+			modified: false,
+		})
 	}
 }
+// endregion:	--- EntryWriteGuard
 
 #[cfg(test)]
 mod tests {

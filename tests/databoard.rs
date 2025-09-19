@@ -336,6 +336,8 @@ fn referencing() {
 	assert_eq!(*entry, 42);
 	// concurrent read should be possible
 	assert_eq!(databoard.get::<i32>("test").unwrap(), 42);
+	// concurrent write not
+	assert!(databoard.try_get_mut_ref::<i32>("test").is_err());
 	drop(entry);
 	// no changes during holding the reference
 	assert_eq!(databoard.sequence_id("test").unwrap(), 1);
@@ -345,6 +347,11 @@ fn referencing() {
 	*entry += 4;
 	*entry -= 2;
 	assert_eq!(*entry, 24);
+
+	// concurrent read  or write should not be possible
+	assert!(databoard.try_get_ref::<i32>("test").is_err());
+	assert!(databoard.try_get_mut_ref::<i32>("test").is_err());
+
 	drop(entry);
 	// multiple changes during holding a reference are counted as 1 change
 	assert_eq!(databoard.sequence_id("test").unwrap(), 2);

@@ -16,6 +16,17 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
+## [0.1.1] - 2025-??-??
+
+### Added
+- public visibility of `EntryReadGuard` & `EntryWriteGuard`
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [0.1.0] - 2025-09-18
 
 Version 0.1.0 is a fundamentally working implementation of the hierarchical databoard.

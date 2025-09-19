@@ -16,6 +16,7 @@ mod remappings;
 
 // flatten
 pub use databoard::{Databoard, DataboardPtr};
+pub use entry::{EntryReadGuard, EntryWriteGuard};
 pub use error::Error;
 pub use remappings::{
 	Remappings, check_board_pointer, check_local_key, check_local_pointer, check_top_level_key, check_top_level_pointer,
