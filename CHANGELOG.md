@@ -16,17 +16,14 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
-## [0.1.1] - 2025-??-??
+## [0.1.1] - 2025-09-19
 
 ### Added
+- `try_get_ref(...)` & `try_get_mut_ref(...)` methods
 - public visibility of `EntryReadGuard` & `EntryWriteGuard`
 
-### Changed
-
-### Fixed
-
 ### Removed
-- the need for `T`to implement `Clone` for all methods but `get()`
+- need for `T`to implement `Clone` for all methods but `get()`
 
 ## [0.1.0] - 2025-09-18
 

@@ -32,7 +32,7 @@ impl Database {
 
 	/// Returns  a result of `true` if a certain `key` of type `T` is available, otherwise a result of `false`.
 	/// # Errors
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn contains<T: Any + Send + Sync>(&self, key: &str) -> Result<bool> {
 		if let Some(entry) = self.storage.get(key) {
 			let en = &*entry.read().data;
@@ -46,7 +46,7 @@ impl Database {
 
 	/// Creates a value of type `T` under `key`.
 	/// # Errors
-	/// - [`Error::AlreadyExists`] if `key` already exists
+	/// - [`Error::AlreadyExists`] if `key` already exists.
 	pub fn create<T: Any + Send + Sync>(&mut self, key: impl Into<ConstString>, value: T) -> Result<()> {
 		let key = key.into();
 		if self.storage.contains_key(&key) {
@@ -55,15 +55,15 @@ impl Database {
 
 		let entry = Arc::new(RwLock::new(EntryData::new(value)));
 		if self.storage.insert(key, entry).is_some() {
-			return Err(Error::Unexpected(file!().into(), line!()));
+			return Err(Error::Unreachable(file!().into(), line!()));
 		}
 		Ok(())
 	}
 
 	/// Returns the value of type `T` stored under `key` and deletes it from storage.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn delete<T: Any + Send + Sync>(&mut self, key: &str) -> Result<T> {
 		// check type
 		if let Some(entry) = self.storage.get(key) {
@@ -85,12 +85,12 @@ impl Database {
 		}
 
 		// We should never reach this!
-		Err(Error::Unexpected(file!().into(), line!()))
+		Err(Error::Unreachable(file!().into(), line!()))
 	}
 
 	/// Returns a clone of the [`EntryPtr`]
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::NotFound`] if `key` is not contained.
 	pub fn entry(&self, key: &str) -> Result<EntryPtr> {
 		if let Some(entry) = self.storage.get(key) {
 			return Ok(entry.clone());
@@ -104,10 +104,10 @@ impl Database {
 	/// Multiple changes during holding the reference are counted as a single change,
 	/// so `sequence_id()`will only increase by 1.
 	///
-	/// You need to drop the received [`EntryGuardWrite`] before using `delete`, `read`, `update` or `sequence_id`.
+	/// You need to drop the received [`EntryWriteGuard`] before using `delete`, `read`, `update` or `sequence_id`.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryWriteGuard::new(key, entry);
@@ -119,10 +119,10 @@ impl Database {
 	/// Returns a read guard to the `T` of the `entry` stored under `key`.
 	/// The entry is locked for write while this reference is held.
 	///
-	/// You need to drop the received [`EntryGuardRead`] before using `delete`, or `update`.
+	/// You need to drop the received [`EntryReadGuard`] before using `delete`, or `update`.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryReadGuard::new(key, entry.clone());
@@ -133,8 +133,8 @@ impl Database {
 
 	/// Returns a copy of the value of type `T` stored under `key`.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn read<T: Any + Clone + Send + Sync>(&self, key: &str) -> Result<T> {
 		self.storage.get(key).map_or_else(
 			|| Err(Error::NotFound { key: key.into() }),
@@ -151,7 +151,7 @@ impl Database {
 	/// The sequence id starts with '1' and is increased at every change of an entry.
 	/// The sequence wraps around to '1' after reaching [`usize::MAX`] .
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
+	/// - [`Error::NotFound`] if `key` is not contained.
 	pub fn sequence_id(&self, key: &str) -> Result<usize> {
 		self.storage.get(key).map_or_else(
 			|| Err(Error::NotFound { key: key.into() }),
@@ -164,11 +164,11 @@ impl Database {
 	/// Multiple changes during holding the reference are counted as a single change,
 	/// so `sequence_id()`will only increase by 1.
 	///
-	/// You need to drop the received [`EntryGuardWrite`] before using `delete`, `read`, `update` or `sequence_id`.
+	/// You need to drop the received [`EntryWriteGuard`] before using `delete`, `read`, `update` or `sequence_id`.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn try_get_mut_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryWriteGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryWriteGuard::try_new(key, entry);
@@ -180,11 +180,11 @@ impl Database {
 	/// Returns a read guard to the `T` of the `entry` stored under `key`.
 	/// The entry is locked for write while this reference is held.
 	///
-	/// You need to drop the received [`EntryGuardRead`] before using `delete`, or `update`.
+	/// You need to drop the received [`EntryReadGuard`] before using `delete`, or `update`.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	/// - [`Error::IsLocked`]  if the entry is write locked by someone else.
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn try_get_ref<T: Any + Send + Sync>(&self, key: &str) -> Result<EntryReadGuard<T>> {
 		if let Some(entry) = self.storage.get(key) {
 			return EntryReadGuard::try_new(key, entry);
@@ -195,8 +195,8 @@ impl Database {
 
 	/// Updates a value of type `T` stored under `key` and returns the old value.
 	/// # Errors
-	/// - [`Error::NotFound`] if `key` is not contained
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::NotFound`]  if `key` is not contained.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	pub fn update<T: Any + Send + Sync>(&self, key: &str, value: T) -> Result<T> {
 		let mut value = value;
 		self.storage.get(key).map_or_else(

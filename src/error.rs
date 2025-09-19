@@ -33,6 +33,13 @@ pub enum Error {
 		/// Key of the wanted entry.
 		key: ConstString,
 	},
+	/// Defined a remapping without giving a parent.
+	NoParent {
+		/// Wanted key.
+		key: ConstString,
+		/// Defined remapping.
+		remapped: ConstString,
+	},
 	/// Entry with `key` not stored.
 	NotFound {
 		/// Key of the wanted entry.
@@ -43,9 +50,8 @@ pub enum Error {
 		/// Key of the wanted entry.
 		key: ConstString,
 	},
-
 	/// Something impossible happened.
-	Unexpected(ConstString, u32),
+	Unreachable(ConstString, u32),
 }
 
 /// Currently the default implementation is sufficient.
@@ -64,15 +70,16 @@ impl core::error::Error for Error {
 impl core::fmt::Debug for Error {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			Self::AlreadyExists { key } => write!(f, "AlreadyExists(key: {key}"),
+			Self::AlreadyExists { key } => write!(f, "AlreadyExists(key: {key})"),
 			Self::AlreadyRemapped { key, remapped } => {
-				write!(f, "AlreadyRemapped(key: {key}, remapped: {remapped}")
+				write!(f, "AlreadyRemapped(key: {key}, remapped: {remapped})")
 			}
-			Self::Assignment { key, value } => write!(f, "Assignment(key: {key}, value: {value}"),
+			Self::Assignment { key, value } => write!(f, "Assignment(key: {key}, value: {value})"),
 			Self::IsLocked { key } => write!(f, "Locked(key: {key}"),
-			Self::NotFound { key } => write!(f, "NotFound(key: {key}"),
-			Self::WrongType { key } => write!(f, "WrongType(key: {key}"),
-			Self::Unexpected(file, line) => write!(f, "Unexpected(file: {file}, line: {line}"),
+			Self::NoParent { key, remapped } => write!(f, "NoParent(key: {key}, remapped: {remapped})"),
+			Self::NotFound { key } => write!(f, "NotFound(key: {key})"),
+			Self::WrongType { key } => write!(f, "WrongType(key: {key})"),
+			Self::Unreachable(file, line) => write!(f, "Unreachable(file: {file}, line: {line})"),
 		}
 	}
 }
@@ -84,11 +91,12 @@ impl core::fmt::Display for Error {
 			Self::AlreadyRemapped { key, remapped } => {
 				write!(f, "key {key} is already remapped as {remapped}")
 			}
-			Self::Assignment { key, value } => write!(f, "remapping of {key} containsan assignment of {value}"),
+			Self::Assignment { key, value } => write!(f, "remapping of {key} contains an assignment of {value}"),
 			Self::IsLocked { key } => write!(f, "the entry {key} is locked"),
+			Self::NoParent { key, remapped } => write!(f, "remapping of {key} to {remapped} without a parent board"),
 			Self::NotFound { key } => write!(f, "an entry for the key {key} is not existing"),
 			Self::WrongType { key } => write!(f, "the entry for the key {key} is stored with a different type"),
-			Self::Unexpected(file, line) => write!(f, "an unexpected error occured in {file} at line {line}"),
+			Self::Unreachable(file, line) => write!(f, "an unexpected error occured in {file} at line {line}"),
 		}
 	}
 }

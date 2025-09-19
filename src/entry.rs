@@ -89,10 +89,9 @@ impl<T: Any + Send + Sync> Drop for EntryReadGuard<T> {
 impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// Returns a read guard to a &T.
 	/// # Errors
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
-	#[allow(clippy::expect_used)]
 	pub fn new(key: &str, entry: EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
@@ -112,11 +111,10 @@ impl<T: Any + Send + Sync> EntryReadGuard<T> {
 
 	/// Returns a read guard to a &mut T.
 	/// # Errors
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
-	#[allow(clippy::expect_used)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
@@ -187,10 +185,9 @@ impl<T: Any + Send + Sync> Drop for EntryWriteGuard<T> {
 impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// Returns a write guard to a &mut T.
 	/// # Errors
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
-	#[allow(clippy::expect_used)]
 	pub fn new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
@@ -216,11 +213,10 @@ impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 
 	/// Returns a write guard to a &mut T.
 	/// # Errors
-	/// - [`Error::WrongType`] if the entry has not the expected type `T`
-	/// - [`Error::IsLocked`] if the entry is locked by someone else
+	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
+	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
 	#[allow(clippy::coerce_container_to_any)]
-	#[allow(clippy::expect_used)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
