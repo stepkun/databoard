@@ -91,7 +91,6 @@ impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
-	#[allow(clippy::coerce_container_to_any)]
 	pub fn new(key: &str, entry: EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
@@ -114,7 +113,6 @@ impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
-	#[allow(clippy::coerce_container_to_any)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
@@ -187,7 +185,6 @@ impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
-	#[allow(clippy::coerce_container_to_any)]
 	pub fn new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
@@ -216,7 +213,6 @@ impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
 	#[allow(unsafe_code)]
-	#[allow(clippy::coerce_container_to_any)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
@@ -262,7 +258,7 @@ mod tests {
 		is_normal::<Dummy>();
 		is_normal::<EntryData>();
 		is_normal::<EntryPtr>();
-		// is_normal::<EntryGuard<Dummy>>();
-		// is_normal::<EntryGuardInner<Dummy>>();
+		// is_normal::<EntryReadGuard<Dummy>>();
+		// is_normal::<EntryWriteGuard<Dummy>>();
 	}
 }

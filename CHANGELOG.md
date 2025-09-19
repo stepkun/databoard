@@ -16,6 +16,17 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
+## [0.1.2] - 2025-??-??
+
+### Added
+
+### Changed
+
+### Fixed
+- minimum Rust version set to 1.88.0
+
+### Removed
+
 ## [0.1.1] - 2025-09-19
 
 ### Added
