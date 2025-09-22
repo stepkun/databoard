@@ -13,63 +13,84 @@ use crate::{
 	strip_board_pointer,
 };
 use alloc::sync::Arc;
-use core::any::Any;
+use core::{any::Any, ops::Deref};
 use spin::RwLock;
 
-/// Convenience type for a thread safe pointer to a [`Databoard`].
-pub type DataboardPtr = Arc<Databoard>;
+/// A thread safe data board.
+pub struct Databoard(Arc<DataboardInner>);
+
+impl Clone for Databoard {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+impl Deref for Databoard {
+	type Target = DataboardInner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl Default for Databoard {
+	fn default() -> Self {
+		Self(Arc::new(DataboardInner {
+			database: RwLock::new(Database::default()),
+			parent: None,
+			remappings: Remappings::default(),
+			autoremap: false,
+		}))
+	}
+}
+
+impl Databoard {
+	/// Creates a [`Databoard`].
+	#[must_use]
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Creates a [`Databoard`] with given parameters.
+	pub fn with(parent: Option<Self>, remappings: Option<Remappings>, autoremap: bool) -> Self {
+		let remappings = remappings.map_or_else(Remappings::default, |remappings| remappings);
+		let database = RwLock::new(Database::default());
+		Self(Arc::new(DataboardInner {
+			database,
+			parent,
+			remappings,
+			autoremap,
+		}))
+	}
+
+	/// Creates a [`Databoard`] using the given parent.
+	/// The parents entries are automatically remapped into the new databoard.
+	#[must_use]
+	pub fn with_parent(parent: Self) -> Self {
+		let database = RwLock::new(Database::default());
+		Self(Arc::new(DataboardInner {
+			database,
+			parent: Some(parent),
+			remappings: Remappings::default(),
+			autoremap: true,
+		}))
+	}
+}
 
 /// Implements a hierarchical databoard.
 #[derive(Default)]
-pub struct Databoard {
+pub struct DataboardInner {
 	/// database of this `Databoard`.
 	/// It is behind an `RwLock` to protect against data races.
 	database: RwLock<Database>,
 	/// An optional reference to a parent `Databoard`.
-	parent: Option<DataboardPtr>,
+	parent: Option<Databoard>,
 	/// Manual remapping rules from this `Databoard` to the parent.
 	remappings: Remappings,
 	/// Whether to use automatic remapping to parents content.
 	autoremap: bool,
 }
 
-impl Databoard {
-	/// Creates a [`DataboardPtr`] to a new [`Databoard`].
-	#[must_use]
-	pub fn new() -> DataboardPtr {
-		Arc::new(Self {
-			database: RwLock::new(Database::default()),
-			parent: None,
-			remappings: Remappings::default(),
-			autoremap: false,
-		})
-	}
-
-	/// Creates a [`DataboardPtr`] to a new [`Databoard`] with given parameters.
-	pub fn with(parent: Option<DataboardPtr>, remappings: Option<Remappings>, autoremap: bool) -> DataboardPtr {
-		let remappings = remappings.map_or_else(Remappings::default, |remappings| remappings);
-		let database = RwLock::new(Database::default());
-		Arc::new(Self {
-			database,
-			parent,
-			remappings,
-			autoremap,
-		})
-	}
-
-	/// Creates a [`DataboardPtr`] to a new [`Databoard`] using the given parent.
-	/// The parents entries are automatically remapped into the new databoard.
-	#[must_use]
-	pub fn with_parent(parent: DataboardPtr) -> DataboardPtr {
-		let database = RwLock::new(Database::default());
-		Arc::new(Self {
-			database,
-			parent: Some(parent),
-			remappings: Remappings::default(),
-			autoremap: true,
-		})
-	}
-
+impl DataboardInner {
 	/// Returns `true` if a certain `key` is available, otherwise `false`.
 	#[must_use]
 	pub fn contains_key(&self, key: &str) -> bool {
@@ -139,6 +160,7 @@ impl Databoard {
 	/// Prints the content of the [`Databoard`] for debugging purpose.
 	#[cfg(feature = "std")]
 	pub fn debug_message(&self) {
+		let _ = self.parent;
 		std::println!("not yet implemented");
 	}
 
@@ -620,7 +642,7 @@ mod tests {
 
 	#[test]
 	const fn normal_types() {
+		is_normal::<DataboardInner>();
 		is_normal::<Databoard>();
-		is_normal::<DataboardPtr>();
 	}
 }

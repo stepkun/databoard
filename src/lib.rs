@@ -15,7 +15,7 @@ mod error;
 mod remappings;
 
 // flatten
-pub use databoard::{Databoard, DataboardPtr};
+pub use databoard::Databoard;
 pub use entry::{EntryReadGuard, EntryWriteGuard};
 pub use error::Error;
 pub use remappings::{

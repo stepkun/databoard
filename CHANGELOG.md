@@ -16,16 +16,13 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
-## [0.1.2] - 2025-??-??
-
-### Added
+## [0.2.0] - 2025-09-22
 
 ### Changed
+- hider inner structure, renamed `DataboardPtr` to `Databoard` 
 
 ### Fixed
 - minimum Rust version set to 1.88.0
-
-### Removed
 
 ## [0.1.1] - 2025-09-19
 
