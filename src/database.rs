@@ -23,6 +23,26 @@ pub struct Database {
 	storage: BTreeMap<ConstString, EntryPtr>,
 }
 
+impl core::fmt::Debug for Database {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "Entries {{ [ ")?;
+		let mut comma = false;
+		for entry in &self.storage {
+			if comma {
+				write!(f, ", ")?;
+			} else {
+				comma = true;
+			}
+			write!(f, "(key: {}", entry.0)?;
+			let data = entry.1.read();
+			write!(f, ", sequence_id: {:?}", data.sequence_id)?;
+			let value = data.data().as_ref();
+			write!(f, ", value: {value:?})")?;
+		}
+		write!(f, " ] }}")
+	}
+}
+
 impl Database {
 	/// Returns `true` if a certain `key` is available, otherwise `false`.
 	#[must_use]

@@ -144,9 +144,17 @@ type RemappingEntry = (ConstString, ConstString);
 ///  - A `remapped_key` starting with `@` is a redirection to the top level [`Databoard`](crate::databoard), e.g. `{@remapped_key}`.
 ///  - A `remapped_key` starting with `_` is a restriction to the current level [`Databoard`](crate::databoard), e.g. `{_remapped_key}`.
 /// - The `value` `{=}` is a shortcut for the redirection with the same name as in `key`, e.g. `{=}`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 #[repr(transparent)]
 pub struct Remappings(Vec<RemappingEntry>);
+
+impl core::fmt::Debug for Remappings {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "Remappings {{ ")?;
+		write!(f, "{:?}", &self.0)?;
+		write!(f, " }}")
+	}
+}
 
 impl Deref for Remappings {
 	type Target = Vec<RemappingEntry>;

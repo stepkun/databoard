@@ -24,6 +24,23 @@ impl Clone for Databoard {
 		Self(self.0.clone())
 	}
 }
+
+impl core::fmt::Debug for Databoard {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "Databoard {{ ")?;
+		write!(f, "autoremap: {:?}", &self.0.autoremap)?;
+		write!(f, ", {:?}", &*self.0.database.read())?;
+		write!(f, ", {:?}", &self.0.remappings)?;
+		write!(f, ", parent: ")?;
+		if let Some(parent) = &self.0.parent {
+			write!(f, "{parent:?}",)
+		} else {
+			write!(f, "None")
+		}?;
+		write!(f, " }}")
+	}
+}
+
 impl Deref for Databoard {
 	type Target = DataboardInner;
 
