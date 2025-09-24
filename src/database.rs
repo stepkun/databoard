@@ -25,7 +25,7 @@ pub struct Database {
 
 impl core::fmt::Debug for Database {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		write!(f, "Entries {{ [ ")?;
+		write!(f, "Entries {{ [")?;
 		let mut comma = false;
 		for entry in &self.storage {
 			if comma {
@@ -39,7 +39,7 @@ impl core::fmt::Debug for Database {
 			let value = data.data().as_ref();
 			write!(f, ", value: {value:?})")?;
 		}
-		write!(f, " ] }}")
+		write!(f, "] }}")
 	}
 }
 

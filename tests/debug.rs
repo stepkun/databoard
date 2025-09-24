@@ -34,13 +34,13 @@ fn remappings() {
 #[test]
 fn databoard() {
 	let mut databoard = Databoard::new();
-	databoard.set("entry1", "value11").unwrap();
+	databoard.set("entry1", "value1").unwrap();
 	databoard.set("entry2", "value2").unwrap();
 
 	let databoard_string = format!("{:?}", &databoard);
 	assert_eq!(
 		databoard_string.as_str(),
-		"Databoard { autoremap: false, Entries { [ (key: entry1, sequence_id: 1, value: Any { .. }), (key: entry2, sequence_id: 1, value: Any { .. }) ] }, Remappings { [] }, parent: None }"
+		"Databoard { autoremap: false, Entries { [(key: entry1, sequence_id: 1, value: Any { .. }), (key: entry2, sequence_id: 1, value: Any { .. })] }, Remappings { [] }, parent: None }"
 	);
 
 	let mut remappings = Remappings::default();
@@ -51,6 +51,27 @@ fn databoard() {
 	let databoard_string = format!("{:?}", &databoard);
 	assert_eq!(
 		databoard_string.as_str(),
-		"Databoard { autoremap: true, Entries { [ (key: entry1, sequence_id: 1, value: Any { .. }) ] }, Remappings { [(\"entry\", \"remapped\")] }, parent: None }"
+		"Databoard { autoremap: true, Entries { [(key: entry1, sequence_id: 1, value: Any { .. })] }, Remappings { [(\"entry\", \"remapped\")] }, parent: None }"
+	);
+
+	let parent = Databoard::new();
+	let remappings = Remappings::default();
+	let databoard = Databoard::with_parent(parent);
+
+	let databoard_string = format!("{:?}", &databoard);
+	assert_eq!(
+		databoard_string.as_str(),
+		"Databoard { autoremap: true, Entries { [] }, Remappings { [] }, parent: Databoard { autoremap: false, Entries { [] }, Remappings { [] }, parent: None } }"
+	);
+
+	let mut parent = Databoard::new();
+	parent.set("p_entry", "p_value").unwrap();
+	let mut remappings = Remappings::default();
+	let mut databoard = Databoard::with_parent(parent);
+
+	let databoard_string = format!("{:?}", &databoard);
+	assert_eq!(
+		databoard_string.as_str(),
+		"Databoard { autoremap: true, Entries { [] }, Remappings { [] }, parent: Databoard { autoremap: false, Entries { [(key: p_entry, sequence_id: 1, value: Any { .. })] }, Remappings { [] }, parent: None } }"
 	);
 }
