@@ -16,6 +16,11 @@ especially the [Rust flavour](https://doc.rust-lang.org/cargo/reference/semver.h
 
 ### Removed
 
+## [0.2.2] - 2025-10-11
+
+### Changed
+- features used with spin crate
+
 ## [0.2.1] - 2025-09-24
 
 ### Added

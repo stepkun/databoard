@@ -2,7 +2,7 @@
 [package]
 resolver = "3"
 name = "databoard"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.88.0"
 license-file = "LICENSE"
@@ -40,8 +40,9 @@ unwrap_used = "deny"
 
 [dependencies]
 spin = { version = "0.10.0", default-features = false, features = [
-    ##"lock_api",
+    "portable-atomic",
     "rwlock",
+    "use_ticket_mutex",
 ] }
 
 [build-dependencies]
@@ -51,4 +52,4 @@ doc-comment = "0.3.3"
 
 [features]
 default = ["std"]
-std = []
+std = ["spin/std"]
