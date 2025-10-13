@@ -1,13 +1,10 @@
 // Copyright © 2025 Stephan Kunz
 //! Implementation of the entry for a [`Databoard`](crate::databoard::Databoard).
 
-#![allow(dead_code, unused)]
-
-use crate::{Error, error::Result, remappings::Remappings};
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, fmt::Debug, string::String, sync::Arc};
+use crate::{Error, error::Result};
+use alloc::{boxed::Box, sync::Arc};
 use core::{
 	any::Any,
-	marker::PhantomData,
 	ops::{Deref, DerefMut},
 };
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -90,15 +87,14 @@ impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// Returns a read guard to a &T.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
-	#[allow(unsafe_code)]
 	pub fn new(key: &str, entry: EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
-			let mut guard = entry.read();
+			let guard = entry.read();
 			// leak returns &'rwlock mut EntryData but locks RwRLock forewer
 			let x = &RwLockReadGuard::leak(guard).data;
 			if let Some(t) = x.downcast_ref::<T>() {
-				let ptr_t: *const T = unsafe { t };
+				let ptr_t: *const T = t;
 				ptr_t
 			} else {
 				return Err(Error::WrongType { key: key.into() });
@@ -112,15 +108,14 @@ impl<T: Any + Send + Sync> EntryReadGuard<T> {
 	/// # Errors
 	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
-	#[allow(unsafe_code)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let ptr_t = {
-			if let Some(mut guard) = entry.try_read() {
+			if let Some(guard) = entry.try_read() {
 				// leak returns &'rlock EntryData but locks RwLock forewer
 				let x = &RwLockReadGuard::leak(guard).data;
 				if let Some(t) = x.downcast_ref::<T>() {
-					let ptr_t: *const T = unsafe { t };
+					let ptr_t: *const T = t;
 					ptr_t
 				} else {
 					return Err(Error::WrongType { key: key.into() });
@@ -184,16 +179,15 @@ impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// Returns a write guard to a &mut T.
 	/// # Errors
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
-	#[allow(unsafe_code)]
 	pub fn new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
 			let mut guard = entry.write();
-			let ptr_seq_id: *mut usize = unsafe { &raw mut guard.sequence_id };
+			let ptr_seq_id: *mut usize = &raw mut guard.sequence_id;
 			// leak returns &'rwlock mut EntryData but locks RwLock forewer
 			let x = &mut RwLockWriteGuard::leak(guard).data;
 			if let Some(t) = x.downcast_mut::<T>() {
-				let ptr_t: *mut T = unsafe { t };
+				let ptr_t: *mut T = t;
 				(ptr_t, ptr_seq_id)
 			} else {
 				return Err(Error::WrongType { key: key.into() });
@@ -212,16 +206,15 @@ impl<T: Any + Send + Sync> EntryWriteGuard<T> {
 	/// # Errors
 	/// - [`Error::IsLocked`]  if the entry is locked by someone else.
 	/// - [`Error::WrongType`] if the entry has not the expected type `T`.
-	#[allow(unsafe_code)]
 	pub fn try_new(key: &str, entry: &EntryPtr) -> Result<Self> {
 		// we know this pointer is valid since the guard owns the EntryPtr
 		let (ptr_t, ptr_seq_id) = {
 			if let Some(mut guard) = entry.try_write() {
-				let ptr_seq_id: *mut usize = unsafe { &raw mut guard.sequence_id };
+				let ptr_seq_id: *mut usize = &raw mut guard.sequence_id;
 				// leak returns &'rwlock mut EntryData but locks RwLock forewer
 				let x = &mut RwLockWriteGuard::leak(guard).data;
 				if let Some(t) = x.downcast_mut::<T>() {
-					let ptr_t: *mut T = unsafe { t };
+					let ptr_t: *mut T = t;
 					(ptr_t, ptr_seq_id)
 				} else {
 					return Err(Error::WrongType { key: key.into() });
@@ -247,7 +240,7 @@ mod tests {
 
 	#[derive(Clone, Debug)]
 	struct Dummy {
-		data: i32,
+		_data: i32,
 	}
 
 	// check, that the auto traits are available
