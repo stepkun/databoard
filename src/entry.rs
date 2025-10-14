@@ -38,7 +38,7 @@ impl EntryData {
 	pub fn new<T: Any + Send + Sync>(value: T) -> Self {
 		Self {
 			data: Box::new(value),
-			sequence_id: usize::MIN + 1,
+			sequence_id: 1,
 		}
 	}
 
@@ -60,7 +60,9 @@ impl EntryData {
 ///
 /// Implements [`Deref`], providing read access to the locked `T`.
 pub struct EntryReadGuard<T: Any + Send + Sync> {
+	/// `Arc` to an `Entry`
 	entry: EntryPtr,
+	/// Pointer to content of the `Entry` above
 	ptr_t: *const T,
 }
 
@@ -69,6 +71,7 @@ impl<T: Any + Send + Sync> Deref for EntryReadGuard<T> {
 
 	#[allow(unsafe_code)]
 	fn deref(&self) -> &Self::Target {
+		// SAFETY: Self referencing to locked content of the `Arc` `Entry`, valid until self is dropped
 		unsafe { &*self.ptr_t }
 	}
 }
@@ -76,7 +79,7 @@ impl<T: Any + Send + Sync> Deref for EntryReadGuard<T> {
 impl<T: Any + Send + Sync> Drop for EntryReadGuard<T> {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		// manually decrementing lock because entry is permanently locked in new()
+		// SAFETY: manually decrementing lock because entry is permanently locked in new()
 		unsafe {
 			self.entry.force_read_decrement();
 		}
@@ -150,6 +153,7 @@ impl<T: Any + Send + Sync> Deref for EntryWriteGuard<T> {
 
 	#[allow(unsafe_code)]
 	fn deref(&self) -> &Self::Target {
+		// SAFETY: Self referencing to locked content of the `Arc` `Entry`, valid until self is dropped
 		unsafe { &*self.ptr_t }
 	}
 }
@@ -158,6 +162,7 @@ impl<T: Any + Send + Sync> DerefMut for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self.modified = true;
+		// SAFETY: Self referencing to locked content of the `Arc` `Entry`, valid until self is dropped
 		unsafe { &mut *self.ptr_t }
 	}
 }
@@ -165,7 +170,7 @@ impl<T: Any + Send + Sync> DerefMut for EntryWriteGuard<T> {
 impl<T: Any + Send + Sync> Drop for EntryWriteGuard<T> {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		// manually removing lock because entry is permanently locked in new()
+		// SAFETY: manually removing lock because entry is permanently locked in new()
 		unsafe {
 			if self.modified {
 				*self.ptr_seq_id += 1;

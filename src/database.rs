@@ -228,7 +228,7 @@ impl Database {
 					if en.sequence_id < usize::MAX {
 						en.sequence_id += 1;
 					} else {
-						en.sequence_id = usize::MIN + 1;
+						en.sequence_id = 1;
 					}
 					Ok(value)
 				} else {
